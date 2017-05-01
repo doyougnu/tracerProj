@@ -42,7 +42,6 @@ eval e@(L _) = return e
 eval e@(V var) = do
   st <- get
   val <- lift . lift . M.lookup var $ st
-  -- tell $ format e val st
   return val
 eval (Not e) = do
   (L (LBool b)) <- eval e
@@ -52,7 +51,7 @@ eval e@(Add l r) = do
   (L (LInt r')) <- eval r
   let res = l' + r'
   st <- get
-  tell $ format e res st
+  tellM e res st
   return . L . LInt $ res
 eval (Let var expr) = do
   st <- get
@@ -68,19 +67,20 @@ eval e@(Equal l r) = ints <|> bools
           (L (LInt r')) <- eval r
           let res = L . LBool $ l' == r'
           st <- get
-          tell $ format e res st
+          tellM e res st
           return res
         bools = do
           (L (LBool l')) <- eval l
           (L (LBool r')) <- eval r
           let res = L . LBool $ l' == r'
           st <- get
-          tell $ format e res st
+          tellM e res st
           return res
+          
 eval e@(While cond body) = do
   (L (LBool cond')) <- eval cond
   st <- get
-  tell $ format e "" st
+  tellM e "" st
   if cond'
     then do
     eval body
@@ -118,3 +118,6 @@ traceAll e s = snd . fst . fromJust $ runLang e s
 
 printTrace :: Log -> IO ()
 printTrace = mapM_ putStrLn . lines
+
+tellM :: (Show a, MonadWriter String m) => Expr -> a -> StateV -> m ()
+tellM = ((tell .) .) . format
