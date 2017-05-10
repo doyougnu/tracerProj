@@ -12,20 +12,20 @@ type Var = String
 data Lit = LBool Bool
          | LInt Int
 
-data Expr = L Lit
+data Stmt = L Lit
           | V Var
-          | Add Expr Expr
-          | Not Expr
-          | Equal Expr Expr
-          | Let Var Expr
-          | Seq Expr Expr
-          | While Expr Expr
+          | Add Stmt Stmt
+          | Not Stmt
+          | Equal Stmt Stmt
+          | Let Var Stmt
+          | Seq [Stmt]
+          | While Stmt Stmt
           | NoOp
 
 -- Types
-type StateV = M.Map Var Expr
+type StateV = M.Map Var Stmt
 type Log = String
-type StateM = WriterT Log (StateT (StateV) (Maybe)) Expr
+type StateM = WriterT Log (StateT (StateV) (Maybe)) Stmt
 
 -- Testing
 emptyState :: StateV
@@ -34,10 +34,14 @@ emptyState = M.empty
 testState :: StateV
 testState = M.fromList [("x", L (LInt 0)), ("y", L (LInt 10))]
 
+x :: Stmt
 x = While (Not (Equal (V "x") (V "y"))) (Let "x" (Add (V "x") (L $ LInt 1)))
 
+y :: Stmt
+y = Seq [Equal (V "x") (L (LInt 10)), x, Equal (V "x") (L (LInt 10))]
+
 -- Denotational Semantics
-eval :: Expr -> StateM
+eval :: Stmt -> StateM
 eval e@(L _) = return e
 eval e@(V var) = do
   st <- get
@@ -58,9 +62,7 @@ eval (Let var expr) = do
   e <- eval expr
   put $ M.insert var e st
   return NoOp
-eval (Seq one two) = do
-  eval one
-  eval two
+eval (Seq xs) = mapM_ eval xs >> return NoOp
 eval e@(Equal l r) = ints <|> bools
   where ints = do
           (L (LInt l')) <- eval l
@@ -76,7 +78,7 @@ eval e@(Equal l r) = ints <|> bools
           st <- get
           tellM e res st
           return res
-          
+
 eval e@(While cond body) = do
   (L (LBool cond')) <- eval cond
   st <- get
@@ -89,7 +91,7 @@ eval e@(While cond body) = do
 eval e = return e
 
 -- Running the monad stack
-runLang :: Expr -> StateV -> Maybe ((Expr, Log), StateV)
+runLang :: Stmt -> StateV -> Maybe ((Stmt, Log), StateV)
 runLang e = runStateT (runWriterT $ eval e)
 
 -- Pretty Printing
@@ -97,27 +99,27 @@ instance Show Lit where
   show (LBool b) = show b
   show (LInt i)  = show i
 
-instance Show Expr where
+instance Show Stmt where
   show (L l) = show l
   show (V v) = show v
   show (Add e e') = show e ++ " + " ++ show e'
-  show (Not e) = "~" ++ "(" ++ show e ++ ")"
+  show (Not e) = "!" ++ "(" ++ show e ++ ")"
   show (Equal e e') = show e ++ " == " ++ show e'
   show (Let v e) = show v ++ " = " ++ show e
-  show (Seq e e') = show e ++ "; " ++ show e'
+  show (Seq xs) = concatMap (\x -> show x ++ ";\n") xs
   show (While e e') = "while (" ++ show e ++ ")"
                       ++ "{\n" ++ "  " ++ show e' ++ "\n}\n"
-  show NoOp = ""
+  show NoOp = "\n"
 
-format :: Show a => Expr -> a -> StateV -> String
+format :: Show a => Stmt -> a -> StateV -> String
 format e res st = "  " ++ show e ++ " => " ++ show res ++ " State: " ++
                   show st ++ "\n"
 
-traceAll :: Expr -> StateV -> Log
+traceAll :: Stmt -> StateV -> Log
 traceAll e s = snd . fst . fromJust $ runLang e s
 
 printTrace :: Log -> IO ()
 printTrace = mapM_ putStrLn . lines
 
-tellM :: (Show a, MonadWriter String m) => Expr -> a -> StateV -> m ()
+tellM :: (Show a, MonadWriter String m) => Stmt -> a -> StateV -> m ()
 tellM = ((tell .) .) . format
