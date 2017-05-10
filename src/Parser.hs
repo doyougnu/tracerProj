@@ -51,10 +51,10 @@ identifier = (lexeme . try) (p >>= check)
 unit :: Parser ()
 unit = () <$ symbol "()" <?> "unit literal"
 
-bool :: Parser Bool
+bool :: Parser Stmt
 bool = t <|> f <?> "boolean literal"
-  where t = True <$ reserved "true"
-        f = False <$ reserved "false"
+  where t = (L . LBool $ True) <$ reserved "true"
+        f = (L . LBool $ False) <$ reserved "false"
 
 int :: Parser Int
 int = fmap fromInteger (lexeme L.integer <?> "integer literal")
@@ -72,7 +72,8 @@ stmtSequence = f <$> sepBy1 stmt' semi
           | otherwise = Seq l
 
 stmt' :: Parser Stmt
-stmt' = whileStmt <|> noopStmt <|> letStmt
+-- stmt' = whileStmt <|> noopStmt <|> letStmt
+stmt' = whileStmt 
 
 whileStmt :: Parser Stmt
 whileStmt = do
@@ -85,8 +86,38 @@ bterm :: Parser Stmt
 bterm = parens bExpr
   <|> (reserved "true" *> pure (L $ LBool True)) 
   <|> (reserved "false" *> pure (L $ LBool False)) 
+  <|> rExpr
+
+rExpr :: Parser Stmt
+rExpr = do
+  one <- aExpr
+  op <- relation
+  two <- aExpr
+  return (op one two)
+
+relation :: Parser Stmt
+relation = (pure Equal) <* symbol "=="
+
+aterm :: Parser Stmt
+aterm = parens bExpr
+  <|> V <$> identifier
+  <|> (L . LInt) <$> int
 
 bExpr :: Parser Stmt
 bExpr = makeExprParser bterm bOperators
 
-bOperators :: 
+aExpr :: Parser Stmt
+aExpr = makeExprParser aterm aOperators
+
+bOperators :: [[Operator Parser Stmt]]
+bOperators =
+  [ [ Prefix (Not <$ reserved "not") ]
+  , [ InfixL (Equal <$ symbol "==")
+    , InfixL (((Not .) . Equal) <$ symbol "!=")
+    ]
+  ]
+
+aOperators :: [[Operator Parser Stmt]]
+aOperators =
+  [ [InfixL (Add <$ symbol "+") ]
+  ]
