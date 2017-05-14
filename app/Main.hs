@@ -9,6 +9,7 @@ import System.Directory
 main :: IO ()
 main = do
   program <- readFile "Programs/WhileStatement.txt"
+  print program
   let ast = parse langParser "" $ pack program
   case ast of
     Left err   -> putStr (parseErrorPretty err)

@@ -62,10 +62,10 @@ langParser :: Parser Stmt
 langParser = between spaceConsumer eof stmt
 
 stmt :: Parser Stmt
-stmt = parens stmt <|> stmtSequence <|> curlies stmt
+stmt = parens stmt <|> stmtSequence
 
 stmtSequence :: Parser Stmt
-stmtSequence = f <$> sepBy1 stmt' semi
+stmtSequence = f <$> sepEndBy stmt' semi
   where f l
           | length l == 1 = head l
           | otherwise = Seq l
@@ -77,13 +77,14 @@ stmt' = whileStmt
   <|> arStmt
   <|> blStmt
   <|> (eof >> return NoOp)
+  <|> (semi >> return NoOp)
 
 whileStmt :: Parser Stmt
 whileStmt = do
   reserved "while"
   cond <- bExpr
   -- symbol "{"
-  body <- stmt 
+  body <- curlies stmt 
   -- symbol "}"
   return (While cond body)
 
