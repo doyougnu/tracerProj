@@ -101,7 +101,7 @@ evalRBOp :: (PNum a, Ord a) => RelBoolOp -> a -> a -> Bool
 evalRBOp Less    = (<)
 evalRBOp Greater = (>)
 evalRBOp Equal   = (==)
-evalRBOp Equal   = (/=)
+evalRBOp NEqual   = (/=)
 
 evalBExpr :: BoolExpr -> StateM Stmt
 evalBExpr (B b)             = bPack b
@@ -183,6 +183,7 @@ instance Show RelBoolOp where
   show Less    = "<"
   show Greater = ">"
   show Equal   = "=="
+  show NEqual   = "!="
 
 instance Show BoolExpr where
   show (B b) = show b

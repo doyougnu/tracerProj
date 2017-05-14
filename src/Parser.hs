@@ -129,7 +129,7 @@ relation :: Parser RelBoolOp
 relation = pure Equal <* symbol "=="
            <|> pure Less <* symbol "<"
            <|> pure Greater <* symbol ">"
-           <|> pure Equal <* symbol "!="
+           <|> pure NEqual <* symbol "!="
 
 aTerm :: Parser ArExpr
 aTerm = parens aExpr
