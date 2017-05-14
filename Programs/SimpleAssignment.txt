@@ -1,0 +1,8 @@
+!! I'm a comment
+!* I'm a
+   multi line comment
+*!
+let x = 2;
+let x = y;
+let y = 3;
+    

@@ -1,6 +1,5 @@
 module Parser where
 
-import Data.Text (Text, pack)
 import Control.Monad (void)
 
 import Text.Megaparsec
@@ -13,7 +12,7 @@ import Lang
 -- | Lexer
 
 spaceConsumer :: Parser ()
-spaceConsumer = L.space (void spaceChar) lineCmnt blkCmnt
+spaceConsumer = L.space (void spaceChar) lineCmnt blkCmnt 
   where lineCmnt = L.skipLineComment "!!"
         blkCmnt  = L.skipBlockComment "!*" "*!"
 
@@ -36,7 +35,7 @@ reserved :: String -> Parser ()
 reserved str = lexeme $ string str >> notFollowedBy alphaNumChar
 
 reservedWords :: [String]
-reservedWords = ["not", "while", "let", "true", "false"]
+reservedWords = ["not", "while", "let", "true", "false", "if", "then", "else"]
 
 identifier :: Parser String
 identifier = (lexeme . try) (p >>= check)
@@ -51,19 +50,19 @@ identifier = (lexeme . try) (p >>= check)
 unit :: Parser ()
 unit = () <$ symbol "()" <?> "unit literal"
 
-bool :: Parser Stmt
+bool :: Parser BoolExpr
 bool = t <|> f <?> "boolean literal"
-  where t = (L . LBool $ True) <$ reserved "true"
-        f = (L . LBool $ False) <$ reserved "false"
+  where t = B True <$ reserved "true"
+        f = B False <$ reserved "false"
 
 int :: Parser Int
 int = fmap fromInteger (lexeme L.integer <?> "integer literal")
 
-whileParser :: Parser Stmt
-whileParser = between spaceConsumer eof stmt
+langParser :: Parser Stmt
+langParser = between spaceConsumer eof stmt
 
 stmt :: Parser Stmt
-stmt = parens stmt <|> stmtSequence
+stmt = parens stmt <|> stmtSequence <|> curlies stmt
 
 stmtSequence :: Parser Stmt
 stmtSequence = f <$> sepBy1 stmt' semi
@@ -72,52 +71,91 @@ stmtSequence = f <$> sepBy1 stmt' semi
           | otherwise = Seq l
 
 stmt' :: Parser Stmt
--- stmt' = whileStmt <|> noopStmt <|> letStmt
-stmt' = whileStmt 
+stmt' = whileStmt
+  <|> ifStmt
+  <|> letStmt
+  <|> arStmt
+  <|> blStmt
+  <|> (eof >> return NoOp)
 
 whileStmt :: Parser Stmt
 whileStmt = do
   reserved "while"
   cond <- bExpr
-  body <- curlies stmt
+  -- symbol "{"
+  body <- stmt 
+  -- symbol "}"
   return (While cond body)
 
-bterm :: Parser Stmt
-bterm = parens bExpr
-  <|> (reserved "true" *> pure (L $ LBool True)) 
-  <|> (reserved "false" *> pure (L $ LBool False)) 
+ifStmt :: Parser Stmt
+ifStmt = do
+  reserved "if"
+  c <- bExpr
+  reserved "then"
+  t <- stmtSequence
+  reserved "else"
+  e <- stmtSequence
+  return (If c t e)
+
+letStmt :: Parser Stmt
+letStmt = do
+  reserved "let"
+  var <- identifier
+  void $ symbol "="
+  s <- arStmt
+  return (Let var s)
+
+arStmt :: Parser Stmt
+arStmt = AR <$> aExpr
+
+blStmt :: Parser Stmt
+blStmt = BL <$> bExpr
+
+bTerm :: Parser BoolExpr
+bTerm = parens bExpr
+  <|> (reserved "true" *> pure (B True))
+  <|> (reserved "false" *> pure (B False))
   <|> rExpr
 
-rExpr :: Parser Stmt
+rExpr :: Parser BoolExpr
 rExpr = do
   one <- aExpr
   op <- relation
   two <- aExpr
-  return (op one two)
+  return (RBinary op one two)
 
-relation :: Parser Stmt
-relation = (pure Equal) <* symbol "=="
+relation :: Parser RelBoolOp
+relation = pure Equal <* symbol "=="
+           <|> pure Less <* symbol "<"
+           <|> pure Greater <* symbol ">"
+           <|> pure Equal <* symbol "!="
 
-aterm :: Parser Stmt
-aterm = parens bExpr
+aTerm :: Parser ArExpr
+aTerm = parens aExpr
   <|> V <$> identifier
-  <|> (L . LInt) <$> int
+  <|> (I . toInteger) <$> int
 
-bExpr :: Parser Stmt
-bExpr = makeExprParser bterm bOperators
+bExpr :: Parser BoolExpr
+bExpr = makeExprParser bTerm bOperators
 
-aExpr :: Parser Stmt
-aExpr = makeExprParser aterm aOperators
+aExpr :: Parser ArExpr
+aExpr = makeExprParser aTerm aOperators
 
-bOperators :: [[Operator Parser Stmt]]
+bOperators :: [[Operator Parser BoolExpr]]
 bOperators =
   [ [ Prefix (Not <$ reserved "not") ]
-  , [ InfixL (Equal <$ symbol "==")
-    , InfixL (((Not .) . Equal) <$ symbol "!=")
+  , [ InfixL (BBinary And <$ symbol "&&")
+    , InfixL (BBinary Or <$ symbol "||")
     ]
   ]
 
-aOperators :: [[Operator Parser Stmt]]
+aOperators :: [[Operator Parser ArExpr]]
 aOperators =
-  [ [InfixL (Add <$ symbol "+") ]
+  [ [ Prefix (Neg <$ symbol "~") ]
+  , [ InfixL (ABinary Add <$ symbol "+")
+    , InfixL (ABinary Subtract <$ symbol "-")
+    , InfixL (ABinary Multiply <$ symbol "*")
+    , InfixL (ABinary Divide <$ symbol "/")
+    ]
   ]
+
