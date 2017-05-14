@@ -81,9 +81,8 @@ instance PNum Integer where
 -- | formatting, given a statement, the result of an eval, and state, function
 -- formats for pretty output
 format :: Show a => Stmt -> a -> VarState -> String
--- format e res st = "  " ++ show e ++ " \n=> " ++ show res ++ " State: " ++
---                   show st ++ "\n"
-format e res st = "  " ++ show e ++ " State: " ++ show st ++ "\n => " ++ show res ++ "\n"
+format e res st = " " ++ show e ++ " State: " ++ show st ++
+                  "\n => " ++ show res ++ "\n\n"
 
 tellM :: (Show a, MonadWriter String m) => Stmt -> a -> VarState -> m ()
 tellM = ((tell .) .) . format
@@ -147,9 +146,10 @@ eval (BL b) = evalBExpr b
 eval (AR a) = evalAExpr a
 eval s@(Let var stmt) = do
   st <- get
-  tellM s s st
   e <- eval stmt
-  put $ M.insert var e st
+  let st' = M.insert var e st
+  put st'
+  tellM s st' st
   return NoOp
 
 eval (If b s s') = do
@@ -205,11 +205,14 @@ instance Show ArExpr where
 instance Show Stmt where
   show (BL b)            = show b 
   show (AR a)            = show a 
-  show (Let str stmt)    = "let " ++ show str ++ " = " ++ show stmt
+  show (Let str stmt)    = "let " ++ show str ++ " = " ++ show stmt ++ "\n"
   show (If cond t e)     = "If (" ++ show cond ++ ") {"  ++ show t ++ "} " ++
                            "else {" ++ show e ++ "}\n"
-  show (While cond stmt) = "while (" ++ show cond ++ ") {\n    " ++ show stmt ++
-                           "}"
+  show (While cond stmt) = "while (" ++ show cond ++ ") {\n" ++
+                           ss ++ "}"
+    where ss = case stmt of
+                 Seq xs -> concatMap (("    " ++) . show) xs
+                 x      -> show x
   show (Seq xs)          = concatMap show xs
   show NoOp              = ""
 
