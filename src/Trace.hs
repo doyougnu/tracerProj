@@ -37,19 +37,19 @@ holeBl v (RBinary op a1 a2) = bValidate $ RBinary op (holeAr v a1) (holeAr v a2)
 holeBl v (Not b)            = bValidate . Not $ holeBl v b
 holeBl _ e                  = e
 
-holeStmt :: Var -> Stmt -> Stmt
-holeStmt v (AR a')     = sValidate . AR $ holeAr v a'
-holeStmt v (BL b')     = sValidate . BL $ holeBl v b'
-holeStmt v (Let var stmt)
+holify :: Var -> Stmt -> Stmt
+holify v (AR a')     = sValidate . AR $ holeAr v a'
+holify v (BL b')     = sValidate . BL $ holeBl v b'
+holify v (Let var stmt)
   | v == var  = NoOp
-  | otherwise = Let var . sValidate $ holeStmt v stmt
-holeStmt v (If c t e)  = sValidate $ If
+  | otherwise = Let var . sValidate $ holify v stmt
+holify v (If c t e)  = sValidate $ If
                          (bValidate $ holeBl v c)
-                         (sValidate $ holeStmt v t)
-                         (sValidate $ holeStmt v e)
-holeStmt v (While c e) = sValidate $ While
+                         (sValidate $ holify v t)
+                         (sValidate $ holify v e)
+holify v (While c e) = sValidate $ While
                          (bValidate $ holeBl v c)
-                         (sValidate $ holeStmt v e)
-holeStmt v (Seq xs)    = Seq $ fmap (holeStmt v) xs
-holeStmt _ s           = s
+                         (sValidate $ holify v e)
+holify v (Seq xs)    = Seq $ fmap (holify v) xs
+holify _ s           = s
 
