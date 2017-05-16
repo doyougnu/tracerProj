@@ -10,6 +10,8 @@ import Data.Text (pack)
 main :: IO ()
 main = return ()
 
+-- | Helper function that takes a file name, and a function to apply to an AST
+-- Once one is parsed
 inputProg :: String -> (Stmt -> IO ()) -> IO ()
 inputProg file f = do
   program <- readFile $ "Programs/" ++ file ++ ".txt"
@@ -18,19 +20,24 @@ inputProg file f = do
     Left err   -> putStr (parseErrorPretty err)
     Right ast' -> f ast'
 
+-- | Run the program and trace all computations
 traceTotalProg :: String -> IO ()
 traceTotalProg file = inputProg file (printTrace . flip traceAll emptyState)
 
+-- | Forward slice the program based on a Variable and trace all computations
 sliceAndTrace :: String -> Var -> IO ()
 sliceAndTrace file var = inputProg file (printTrace .
                                          flip traceAll emptyState .
                                          holify var)
 
+-- | Run the program and print the final value and final state
 printRunProg :: String -> IO ()
 printRunProg file = inputProg file (print . flip runProg emptyState)
 
+-- | Run the program and print the final value
 printEvalProg :: String -> IO ()
 printEvalProg file = inputProg file (print . flip evalProg emptyState)
 
+-- | Run the program and print the final state
 printExecProg :: String -> IO ()
 printExecProg file = inputProg file (print . flip execProg emptyState)
