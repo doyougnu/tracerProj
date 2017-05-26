@@ -28,6 +28,9 @@ parens = between (lexeme $ symbol "(") (lexeme $ symbol ")")
 curlies :: Parser a -> Parser a
 curlies = between (lexeme $ symbol "{") (lexeme $ symbol "}")
 
+strs :: Parser a -> Parser a
+strs = between (lexeme $ symbol "_") (lexeme $ symbol "_")
+
 semi :: Parser String
 semi = symbol ";"
 
@@ -76,26 +79,22 @@ stmt' = whileStmt
   <|> letStmt
   <|> arStmt
   <|> blStmt
-  <|> (eof >> return NoOp)
-  <|> (semi >> return NoOp)
+  <|> strStmt
 
 whileStmt :: Parser Stmt
 whileStmt = do
   reserved "while"
   cond <- bExpr
-  -- symbol "{"
-  body <- curlies stmt 
-  -- symbol "}"
+  body <- curlies stmt
   return (While cond body)
 
 ifStmt :: Parser Stmt
 ifStmt = do
   reserved "if"
   c <- bExpr
-  reserved "then"
-  t <- stmtSequence
+  t <- curlies stmtSequence
   reserved "else"
-  e <- stmtSequence
+  e <- curlies stmtSequence
   return (If c t e)
 
 letStmt :: Parser Stmt
@@ -103,7 +102,7 @@ letStmt = do
   reserved "let"
   var <- identifier
   void $ symbol "="
-  s <- arStmt
+  s <- stmt'
   return (Let var s)
 
 arStmt :: Parser Stmt
@@ -111,6 +110,9 @@ arStmt = AR <$> aExpr
 
 blStmt :: Parser Stmt
 blStmt = BL <$> bExpr
+
+strStmt :: Parser Stmt
+strStmt = ST <$> strs (many letterChar)
 
 bTerm :: Parser BoolExpr
 bTerm = parens bExpr

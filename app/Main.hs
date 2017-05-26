@@ -16,6 +16,7 @@ inputProg :: String -> (Stmt -> IO ()) -> IO ()
 inputProg file f = do
   program <- readFile $ "Programs/" ++ file ++ ".txt"
   let ast = parse langParser "" $ pack program
+  print ast
   case ast of
     Left err   -> putStr (parseErrorPretty err)
     Right ast' -> f ast'
@@ -41,3 +42,7 @@ printEvalProg file = inputProg file (print . flip evalProg emptyState)
 -- | Run the program and print the final state
 printExecProg :: String -> IO ()
 printExecProg file = inputProg file (print . flip execProg emptyState)
+
+-- Implement line numbers so we do not have to print out the entire program
+-- Allow a list of variable inputs
+-- How did FP support the program or how did it hinder it?

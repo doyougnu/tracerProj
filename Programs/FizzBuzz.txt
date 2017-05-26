@@ -1,0 +1,11 @@
+!! Fizz Buzz! Woooo
+let x = 3;
+let y = 0;
+while (x < 101){
+if (x == 3){
+let y = _fizz_
+} else {
+let y = _buzz_
+};
+let x = x + 1;
+}

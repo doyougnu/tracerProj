@@ -83,8 +83,9 @@ evalAExpr ArNoOp = return NoOp
 
 -- | Denotational Semantics of Statements
 eval :: Stmt -> StateM Stmt
-eval (BL b) = evalBExpr b
-eval (AR a) = evalAExpr a
+eval (BL b)   = evalBExpr b
+eval (AR a)   = evalAExpr a
+eval a@(ST _) = return a
 eval s@(Let var stmt) = do
   st <- get
   e <- eval stmt

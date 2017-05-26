@@ -25,9 +25,9 @@ sValidate (Seq xs)        = Seq $ fmap sValidate xs
 sValidate s               = s
 
 holeAr :: Var -> ArExpr -> ArExpr
-holeAr v e@(V var) 
-  | v == var                 = ArNoOp
-  | otherwise                = e
+holeAr v e@(V var)
+  | v == var                 = e
+  | otherwise                = ArNoOp
 holeAr v (Neg arExpr)        = aValidate . Neg $ holeAr v arExpr
 holeAr v (ABinary o a1 a2)   = aValidate $ ABinary o (holeAr v a1) (holeAr v a2)
 holeAr _ e                   = e
@@ -41,8 +41,8 @@ holify :: Var -> Stmt -> Stmt
 holify v (AR a')     = sValidate . AR $ holeAr v a'
 holify v (BL b')     = sValidate . BL $ holeBl v b'
 holify v (Let var stmt)
-  | v == var  = NoOp
-  | otherwise = Let var . sValidate $ holify v stmt
+  | v == var  = Let var . sValidate $ holify v stmt
+  | otherwise = NoOp 
 holify v (If c t e)  = sValidate $ If
                          (bValidate $ holeBl v c)
                          (sValidate $ holify v t)

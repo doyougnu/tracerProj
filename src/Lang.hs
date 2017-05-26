@@ -10,22 +10,25 @@ type Var = String
 -- *  Booleans
 -- | Binary Boolean Ops
 data BinBoolOp = And | Or
-               deriving (Eq)
+               deriving (Eq, Ord)
+               -- deriving (Eq, Show)
 
 -- | Relational Boolean Ops
 data RelBoolOp = Less
                | Greater
                | Equal
                | NEqual
-               deriving (Eq)
+               deriving (Eq, Ord)
+               -- deriving (Eq, Show)
 
 -- | Boolean Expressions
-data BoolExpr = B Bool
+data BoolExpr  = B Bool
               | Not BoolExpr
               | BBinary BinBoolOp BoolExpr BoolExpr
               | RBinary RelBoolOp ArExpr ArExpr
               | BNoOp
-              deriving (Eq)
+              deriving (Eq, Ord)
+              -- deriving (Eq, Show)
 
 -- * Arithmetic Operators
 -- | Binary Arithmatic operators
@@ -33,28 +36,32 @@ data ArBinOp = Add
              | Subtract
              | Multiply
              | Divide
-             deriving (Eq)
+             deriving (Eq, Ord)
+             -- deriving (Eq, Show)
 
 -- | Arithmetic Expressions
-data ArExpr = V Var
+data ArExpr  = V Var
             | I Integer
             | Neg ArExpr
             | ABinary ArBinOp ArExpr ArExpr
             | ArNoOp
-            deriving (Eq)
+            deriving (Eq, Ord)
+            -- deriving (Eq, Show)
 
 -- * Statements
-data Stmt = BL BoolExpr
+data Stmt  = BL BoolExpr
           | AR ArExpr
+          | ST String
           | Let String Stmt
-          | If BoolExpr Stmt Stmt
+          | If BoolExpr Stmt  Stmt
           | While BoolExpr Stmt
-          | Seq [Stmt]
+          | Seq [Stmt ]
           | NoOp
-          deriving (Eq)
+          deriving (Eq, Ord)
+          -- deriving (Eq, Show)
 
 -- | Types
-type VarState = Map Var Stmt
+type VarState  = Map Var Stmt
 type Log = String
 
 type LangMonad s w a = MaybeT (WriterT w (State s)) a
@@ -87,7 +94,7 @@ class Num n => PNum n where
 instance PNum Integer where
   (./) = div
 
--- | Pretty Printing
+-- -- | Pretty Printing
 instance Show BinBoolOp where
   show And = "&&"
   show Or  = "||"
@@ -121,6 +128,7 @@ instance Show ArExpr where
 instance Show Stmt where
   show (BL b)            = show b
   show (AR a)            = show a
+  show (ST s)            = s
   show (Let str stmt)    = "let " ++ show str ++ " = " ++ show stmt ++ "\n"
   show (If cond t e)     = "If (" ++ show cond ++ ") {"  ++ show t ++ "} " ++
                            "else {" ++ show e ++ "}\n"
