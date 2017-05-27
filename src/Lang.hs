@@ -49,7 +49,7 @@ data ArExpr  = V Var
             deriving (Eq, Show, Ord)
 
 -- * Statements
-data Stmt  = BL BoolExpr
+data Stmt = BL BoolExpr
           | AR ArExpr
           | ST String
           | Let String Stmt
@@ -84,6 +84,12 @@ seqTest = Seq [Let "x" (AR (I 2)),Let "y" (AR (I 3)),Let "x" (AR (V "y")),NoOp]
 
 addTest :: Stmt
 addTest = Seq [Let "x" (AR (I 2)), AR (ABinary Add (V "x") (V "x"))]
+
+letTest :: Stmt
+letTest = Seq [ Let "x" (AR $ I 2)
+              , Let "y" (AR $ V "x")
+              , Let "z" (AR (ABinary Add (V "x") (V "y")))
+              ]
 --
 
 -- | Wrapping division into Num to avoid Fractional
