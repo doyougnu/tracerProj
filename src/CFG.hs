@@ -2,6 +2,8 @@ module CFG where
 
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Data.List.Extras (argmax)
+import Data.List (nub)
 -- import Control.Monad.State
 -- import Debug.Trace (trace)
 
@@ -14,16 +16,32 @@ type Node = (Var, Stmt)
 -- | Two Types of Edges, data dependence, control flow dependence
 data Etype = Data
            | Control
-           deriving Show
+           deriving (Show, Eq)
 
 -- | An Edge is either a data edge or Control edge
-data Edge = Edge Etype Node Node 
+data Edge t n = Edge t n
   deriving Show
 
-data DGraph n e = DGraph (M.Map n [e])
+-- TypeClass?
+unEdge :: Edge t n -> n
+unEdge (Edge _ n) = n
+
+unTEdge :: Edge t n -> t
+unTEdge (Edge t _) = t
+
+type DEdge = Edge Etype Node
+
+data MGraph n e = MGraph (M.Map n [e])
   deriving Show
+
+type DGraph = MGraph Node DEdge
+
+-- could avoid with newtype + record syntax
+unGraph :: MGraph n e -> M.Map n [e]
+unGraph (MGraph xs) = xs
 
 class Graph g n e where
+  graph :: [(n, [e])] -> g n e
   nodes :: g n e -> [n]
   edges :: g n e -> [(n, [e])]
   addNode :: n -> g n e -> g n e
@@ -33,15 +51,19 @@ class (Graph g n e) => CFG g n e where
   getDataDeps :: g n e -> [Node]
   getControlDeps :: g n e -> [Node]
 
-instance Graph DGraph Node Edge where
-  nodes (DGraph xs)       = M.keys xs
-  edges (DGraph es)       = M.toList es
-  addNode n (DGraph es)   = DGraph $ M.insert n [] es
-  addEdge n e (DGraph es) = DGraph $ M.insertWith (++) n [e] es
+instance (Ord n) => Graph MGraph n e where
+  graph                   = MGraph . M.fromList
+  nodes (MGraph xs)       = M.keys xs
+  edges (MGraph es)       = M.toList es
+  addNode n (MGraph es)   = MGraph $ M.insert n [] es
+  addEdge n e (MGraph es) = MGraph $ M.insertWith (++) n [e] es
 
-instance Monoid (DGraph Node Edge) where
-  mempty = DGraph M.empty
-  mappend (DGraph es) (DGraph es') = DGraph $ M.unionWith (++) es es'
+instance (Ord n) => Monoid (MGraph n e) where
+  mempty = MGraph M.empty
+  mappend (MGraph es) (MGraph es') = MGraph $ M.unionWith (++) es es'
+
+-- instance Foldable (DGraph n) where
+--   foldr f acc xs = M.foldr f acc (unGraph xs)
 
 -- | Given a variable and a statement, return bool if that variable is ever
 -- needed inside the statement
@@ -86,19 +108,19 @@ allVars (Seq xs)                       = S.unions $ fmap allVars xs
 allVars _                              = mempty
 
 -- | Given a Statement, pack the nodes in a graph with those statements
-packNodes :: Stmt -> DGraph Node Edge -> DGraph Node Edge
+packNodes :: Stmt -> DGraph -> DGraph
 packNodes a@(Let var _) g = addNode (var, a) g
 packNodes (Seq ss)      g = mconcat $ flip packNodes g <$> ss
 packNodes a             g = addNode ("", a) g
 
 -- | Given a statement, and a graph, add data edges to that graph
-toDataDCFG :: Stmt -> DGraph Node Edge -> DGraph Node Edge
+toDataDCFG :: Stmt -> DGraph -> DGraph
 toDataDCFG s@(Let var s')  g = mconcat $ helper <$> vars <*> ns
   where
     ns = nodes g
     vars = S.toList $ allVars s'
     helper x y = if x == fst y
-               then addEdge y (Edge Data y (var, s)) g
+               then addEdge y (Edge Data (var, s)) g
                else g
 
 toDataDCFG s@(If c t e) g = mconcat $ [ toDataDCFG (BL c)
@@ -109,7 +131,7 @@ toDataDCFG s@(If c t e) g = mconcat $ [ toDataDCFG (BL c)
     ns = nodes g
     vars = S.toList . S.unions $ [allVars (BL c), allVars t, allVars e]
     helper x y = if x == fst y
-               then addEdge y (Edge Data y ("", s)) g
+               then addEdge y (Edge Data ("", s)) g
                else g
 
 toDataDCFG s@(While b e) g = mconcat $ [ toDataDCFG (BL b)
@@ -119,26 +141,52 @@ toDataDCFG s@(While b e) g = mconcat $ [ toDataDCFG (BL b)
     ns = nodes g
     vars = S.toList . S.unions $ [allVars (BL b), allVars e]
     helper x y = if x == fst y
-               then addEdge y (Edge Data y ("", s)) g
+               then addEdge y (Edge Data ("", s)) g
                else g
 toDataDCFG (Seq ss) g = mconcat $ flip toDataDCFG g <$> ss
 toDataDCFG _        g = g
 
 -- | Given a statement, and a graph, add control flow edges
-toDataCCFG :: Stmt -> DGraph Node Edge -> DGraph Node Edge
-toDataCCFG s@(If _ t e)  g = addEdge tNode (Edge Control sNode tNode) g `mappend`
-                             addEdge eNode (Edge Control sNode eNode) g
+toDataCCFG :: Stmt -> DGraph -> DGraph
+toDataCCFG s@(If _ t e)  g = addEdge tNode (Edge Control sNode) g `mappend`
+                             addEdge eNode (Edge Control sNode) g
   where tNode = ("", t)
         eNode = ("", e)
         sNode = ("", s)
-toDataCCFG s@(While _ e) g = addEdge eNode (Edge Control sNode eNode) g
+toDataCCFG s@(While _ e) g = addEdge eNode (Edge Control sNode) g
   where sNode = ("", s)
         eNode = ("", e)
 toDataCCFG _             g = g
 
-toCFG :: Stmt -> DGraph Node Edge
+toCFG :: Stmt -> DGraph
 toCFG s = mconcat $ [toDataCCFG s, toDataDCFG s] <*> pure (packNodes s mempty)
 
 -- | Given a graph, return an AST
--- toAST :: DGraph Node Edge -> [Stmt]
--- toAST (DGraph ns es) = 
+-- this is some sort of fold, also a CSP, with most constrained var strategy
+toAST' :: DGraph -> [Stmt]
+toAST' (MGraph es)
+  | null l = []
+  | otherwise = (snd . fst $ m) :
+                toAST' (MGraph $ es `M.difference` (M.fromList [m]))
+  where
+    l = M.toList es
+    m = argmax (length . snd) l
+
+toAST :: DGraph -> Stmt
+toAST es = Seq $ toAST' es
+
+staticSlice :: Var -> DGraph -> DGraph
+staticSlice var d@(MGraph ex) = ns `mappend` helper' (edgeDefs) d
+  where defs = M.filterWithKey (\k _ -> fst k == var) ex
+        edgeDefs = fmap unEdge .
+                   filter ((==Data) . unTEdge) .
+                   concat $ M.elems defs
+        ns = graph . fmap (flip (,) []) . nub $ M.keys defs
+
+-- The [Node] here is just an list of edges stripped of the their dependency type
+helper' :: [Node] -> DGraph -> DGraph
+helper' []      _          = mempty
+helper' (x:xs) d@(MGraph ex) = (MGraph $ M.fromList [(x, [])]) `mappend`
+                               helper' xs d `mappend` helper' esNodes d 
+  where es = ex M.! x
+        esNodes = fmap unEdge es
