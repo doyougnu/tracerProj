@@ -2,7 +2,7 @@ module CFG where
 
 import qualified Data.Map as M
 import qualified Data.Set as S
--- import Control.Arrow
+-- import Control.Monad.State
 -- import Debug.Trace (trace)
 
 import Lang
@@ -20,7 +20,7 @@ data Etype = Data
 data Edge = Edge Etype Node Node 
   deriving Show
 
-data DGraph n e = DGraph (S.Set n) (M.Map n [e])
+data DGraph n e = DGraph (M.Map n [e])
   deriving Show
 
 class Graph g n e where
@@ -34,15 +34,14 @@ class (Graph g n e) => CFG g n e where
   getControlDeps :: g n e -> [Node]
 
 instance Graph DGraph Node Edge where
-  nodes (DGraph ns _)        = S.toList ns
-  edges (DGraph _ es)        = M.toList es
-  addNode n (DGraph ns es)   = DGraph (S.insert n ns) es
-  addEdge n e (DGraph ns es) = DGraph ns (M.insertWith (++) n [e] es)
+  nodes (DGraph xs)       = M.keys xs
+  edges (DGraph es)       = M.toList es
+  addNode n (DGraph es)   = DGraph $ M.insert n [] es
+  addEdge n e (DGraph es) = DGraph $ M.insertWith (++) n [e] es
 
 instance Monoid (DGraph Node Edge) where
-  mempty = DGraph S.empty M.empty
-  mappend (DGraph ns es) (DGraph ns' es') =
-    DGraph (S.union ns ns') (M.unionWith (++) es es')
+  mempty = DGraph M.empty
+  mappend (DGraph es) (DGraph es') = DGraph $ M.unionWith (++) es es'
 
 -- | Given a variable and a statement, return bool if that variable is ever
 -- needed inside the statement
@@ -86,7 +85,7 @@ allVars (While c e)                    = S.unions [ allVars (BL c)
 allVars (Seq xs)                       = S.unions $ fmap allVars xs
 allVars _                              = mempty
 
--- | Given a Statement, pack the nodes in a graph with those statments
+-- | Given a Statement, pack the nodes in a graph with those statements
 packNodes :: Stmt -> DGraph Node Edge -> DGraph Node Edge
 packNodes a@(Let var _) g = addNode (var, a) g
 packNodes (Seq ss)      g = mconcat $ flip packNodes g <$> ss
@@ -102,10 +101,10 @@ toDataDCFG s@(Let var s')  g = mconcat $ helper <$> vars <*> ns
                then addEdge y (Edge Data y (var, s)) g
                else g
 
-toDataDCFG s@(If c t e) g = mconcat $ toDataDCFG (BL c) g :
-                            toDataDCFG t g :
-                            toDataDCFG e g :
-                            (helper <$> vars <*> ns) 
+toDataDCFG s@(If c t e) g = mconcat $ [ toDataDCFG (BL c)
+                                      , toDataDCFG t
+                                      , toDataDCFG e
+                                      ] <*> [g] ++ (helper <$> vars <*> ns) 
   where
     ns = nodes g
     vars = S.toList . S.unions $ [allVars (BL c), allVars t, allVars e]
@@ -113,9 +112,9 @@ toDataDCFG s@(If c t e) g = mconcat $ toDataDCFG (BL c) g :
                then addEdge y (Edge Data y ("", s)) g
                else g
 
-toDataDCFG s@(While b e) g = mconcat $ toDataDCFG (BL b) g :
-                             toDataDCFG e g :
-                             (helper <$> vars <*> ns)
+toDataDCFG s@(While b e) g = mconcat $ [ toDataDCFG (BL b)
+                                       , toDataDCFG e
+                                       ] <*> [g] ++ (helper <$> vars <*> ns)
   where
     ns = nodes g
     vars = S.toList . S.unions $ [allVars (BL b), allVars e]
@@ -127,12 +126,19 @@ toDataDCFG _        g = g
 
 -- | Given a statement, and a graph, add control flow edges
 toDataCCFG :: Stmt -> DGraph Node Edge -> DGraph Node Edge
-toDataCCFG s@(If c t e)  g = addEdge tNode (Edge Control sNode tNode) g `mappend`
+toDataCCFG s@(If _ t e)  g = addEdge tNode (Edge Control sNode tNode) g `mappend`
                              addEdge eNode (Edge Control sNode eNode) g
   where tNode = ("", t)
         eNode = ("", e)
         sNode = ("", s)
-toDataCCFG s@(While b e) g = addEdge eNode (Edge Control sNode eNode) g
+toDataCCFG s@(While _ e) g = addEdge eNode (Edge Control sNode eNode) g
   where sNode = ("", s)
         eNode = ("", e)
 toDataCCFG _             g = g
+
+toCFG :: Stmt -> DGraph Node Edge
+toCFG s = mconcat $ [toDataCCFG s, toDataDCFG s] <*> pure (packNodes s mempty)
+
+-- | Given a graph, return an AST
+-- toAST :: DGraph Node Edge -> [Stmt]
+-- toAST (DGraph ns es) = 
