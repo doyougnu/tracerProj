@@ -61,7 +61,7 @@ modifyAssigned f = modify (\(a,b,c) -> (a, b, f c))
 
 -- | Assignment, Unassignment
 assign :: CSP csp var val => csp var val -> var -> val -> CSPStateM var val ()
-assign csp var val = do modifyAssigned $ M.insert var val
+assign _ var val = modifyAssigned $ M.insert var val
 
 -- | remove an assigned variable from assignment map, add variable back to domain
 -- | with all values considered
@@ -93,10 +93,10 @@ goalTest csp assgn = allDone csp assgn && all noConflicts (vars csp)
 -- | Return the most constrained variable based on number of values left in its
 -- Domain
 getMostConstrained :: (Ord var, Show var) => [var] -> CSPStateM var val var
-getMostConstrained vars =
+getMostConstrained vs =
   do domain <- getDomain
      assigned <- getAssigned
-     let possibleVars = [posVar | posVar <- vars, M.notMember posVar assigned]
+     let possibleVars = [posVar | posVar <- vs, M.notMember posVar assigned]
          mostConVar = fst . minimumBy (O.comparing snd) .
                            L.filter (flip L.elem possibleVars . fst) .
                            fmap (second length) $ M.toList domain
@@ -126,7 +126,7 @@ backtrace csp = do
                       Nothing -> unAssign csp var >>
                                  put savedState >>
                                  recur var vals
-                      res -> return res
+                      res' -> return res'
             else recur var vals
 
         noConflicts var val assgn = not $ hasConflicts csp var val assgn
