@@ -1,6 +1,7 @@
 module CFG where
 
 import qualified Data.Map as M
+import qualified Data.IntMap as I
 import qualified Data.Set as S
 import Data.List.Extras (argmax)
 import Data.List (nub)
@@ -83,6 +84,12 @@ mentions str (While c e)                    = mentions str (BL c)
 
 mentions str (Seq xs)                       = any (mentions str) xs
 mentions _   _                              = False
+
+tag :: Stmt -> Int -> [(Int, Stmt)]
+tag s@(If _ t e) n = (n, s) : tag t (succ n) ++ tag e (succ n)
+tag s@(While _ e) n = (n, s) : tag e (succ n)
+tag (Seq xs) n = take (length xs) . concat $ pure tag <*> xs <*> [n..]
+tag s n = [(succ n, s)]
 
 -- | Given a statement, return all variables that are referenced inside that
 -- statement
@@ -167,7 +174,7 @@ toAST' :: DGraph -> [Stmt]
 toAST' (MGraph es)
   | null l = []
   | otherwise = (snd . fst $ m) :
-                toAST' (MGraph $ es `M.difference` (M.fromList [m]))
+                toAST' (MGraph $ es `M.difference` M.fromList [m])
   where
     l = M.toList es
     m = argmax (length . snd) l
