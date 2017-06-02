@@ -36,7 +36,7 @@ type CSPStateM var val res = State (CSPState var val) res
 -- | Getters, Setters, Modifiers
 getDomain :: MonadState (a, b, c) m => m a
 --functions are functors so we can map on them!
-getDomain = fmap (\(x,_,_) -> x) get 
+getDomain = fmap (\(x,_,_) -> x) get
 
 modifyDomain :: MonadState (a, b, c) m => (a -> a) -> m ()
 modifyDomain f = modify $ \(a, b, c) -> (f a, b, c)
