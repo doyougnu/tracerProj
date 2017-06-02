@@ -4,11 +4,10 @@ import qualified Data.Map as M
 import qualified Data.IntMap as I
 import qualified Data.Set as S
 import Control.Monad.Reader
-import Control.Monad.Writer
+-- import Control.Monad.Writer
 import Control.Monad.State
 import Data.List.Extras (argmax)
 import Data.List (nub)
--- import Control.Monad.State
 -- import Debug.Trace (trace)
 
 import Lang
@@ -24,7 +23,7 @@ data Etype = Data
 
 -- | An Edge is either a data edge or Control edge
 data Edge t n = Edge t n
-  deriving Show
+  deriving (Show, Eq)
 
 -- TypeClass?
 unEdge :: Edge t n -> n
@@ -61,6 +60,7 @@ class Graph g n e where
   addNode :: n -> g n e -> g n e
   addEdge :: n -> e -> g n e -> g n e
   getEdges :: n -> g n e -> [e]
+  alterEdge :: ([e] -> [e]) -> n -> g n e -> g n e
   getNodes :: e -> g n e -> [n]
   removeEdge :: n -> e -> g n e -> g n e
   removeNode :: n -> g n e -> g n e
@@ -76,6 +76,7 @@ instance (Ord n, Eq e) => Graph MGraph n e where
   addNode n (MGraph es)      = MGraph $ M.insert n [] es
   addEdge n e (MGraph es)    = MGraph $ M.insertWith (++) n [e] es
   getEdges n (MGraph es)     = es M.! n --exception if node not in map
+  alterEdge f n (MGraph es)  = MGraph $ M.adjust f n es
   getNodes x (MGraph es)     = M.keys $ M.filter (elem x) es 
   removeEdge k e (MGraph es) = MGraph $ M.adjust (filter (/= e)) k es
   removeNode k (MGraph es)   = MGraph $ M.delete k es
@@ -179,12 +180,13 @@ isLetDef :: String -> Stmt -> Bool
 isLetDef var (Let v _) = var == v
 isLetDef _   _         = False
 
--- stealEdges :: Ord a => a -> a -> LGraph -> LGraph
--- stealEdges n1 n2 g = t'
---   where e1 = g M.! n1
---         e2 = g M.! n2
---         t = M.adjust (const []) n2 g
---         t' = M.adjust (++ e1) n1 g
+-- | node 1 takes all the edges from node 2, node 2's is removed
+stealEdges :: NNode -> NNode -> LGraph -> LGraph
+stealEdges n1 n2 g = g''
+  where 
+    e2s = getEdges n2 g
+    g' = alterEdge (nub . (++e2s)) n1 g
+    g'' = removeNode n2 g'
 
 -- | Given a statement, and a graph, add data edges to that graph
 type Engine s r a = StateT s (Reader r) a
