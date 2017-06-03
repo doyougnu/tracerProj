@@ -32,13 +32,19 @@ unEdge (Edge _ n) = n
 unTEdge :: Edge t n -> t
 unTEdge (Edge t _) = t
 
+dataWrap :: n -> Edge Etype n
+dataWrap = Edge Data
+
+controlWrap :: n -> Edge Etype n
+controlWrap = Edge Control
+
 -- | An edge in the Control Flow graph, is an edge with an edge type and the node
 -- that the edge touches. For a map Map Node Edge the edge is assumed to be from
 -- the key node to the node held in the edge type
 type DEdge = Edge Etype Node
 
 -- | abstract representation of a Graph constructed by an adjacency Map.
-data MGraph n e = MGraph (M.Map n [e])
+data MGraph n e = MGraph (M.Map n e)
   deriving Show
 
 -- | type synonym to construct our actual type
@@ -47,43 +53,45 @@ type DGraph = MGraph Node DEdge
 -- | An integer map where keys are line numbers, values are statements.
 type LineMap = I.IntMap Stmt
 type NNode = Int
-type LGraph = MGraph NNode (Edge Etype NNode)
+type LGraph = MGraph NNode [(Edge Etype NNode)]
 
 -- could avoid with newtype + record syntax
-unGraph :: MGraph n e -> M.Map n [e]
+unGraph :: MGraph n e -> M.Map n e
 unGraph (MGraph xs) = xs
 
 class Graph g n e where
-  graph :: [(n, [e])] -> g n e
+  graph :: [(n, e)] -> g n e
   nodes :: g n e -> [n]
-  edges :: g n e -> [(n, [e])]
+  edges :: g n e -> [(n, e)]
   addNode :: n -> g n e -> g n e
-  addEdge :: n -> e -> g n e -> g n e
-  getEdges :: n -> g n e -> [e]
-  alterEdge :: ([e] -> [e]) -> n -> g n e -> g n e
-  getNodes :: e -> g n e -> [n]
-  removeEdge :: n -> e -> g n e -> g n e
+  addNodeWEdge :: n -> e -> g n e -> g n e
+  addEdgeWith :: (e -> e -> e) -> n -> e -> g n e -> g n e
+  getEdge :: n -> g n e -> e
+  alterEdge :: (e -> e) -> n -> g n e -> g n e
+  getNodesWith :: (e -> Bool) -> g n e -> [n]
+  removeEdgeWith :: (e -> e) -> n -> e -> g n e -> g n e
   removeNode :: n -> g n e -> g n e
 
 class (Graph g n e) => CFG g n e where
   getDataDeps    :: g n e -> [Node]
   getControlDeps :: g n e -> [Node]
 
-instance (Ord n, Eq e) => Graph MGraph n e where
+instance (Ord n, Eq e, Monoid e) => Graph MGraph n e where
   graph                      = MGraph . M.fromList
   nodes (MGraph xs)          = M.keys xs
   edges (MGraph es)          = M.toList es
-  addNode n (MGraph es)      = MGraph $ M.insert n [] es
-  addEdge n e (MGraph es)    = MGraph $ M.insertWith (++) n [e] es
-  getEdges n (MGraph es)     = es M.! n --exception if node not in map
+  addNode n g                = addNodeWEdge n mempty g
+  addNodeWEdge n e (MGraph es) = MGraph $ M.insert n e es
+  addEdgeWith f n e (MGraph es) = MGraph $ M.insertWith f n e es
+  getEdge n (MGraph es)     = es M.! n --exception if node not in map
   alterEdge f n (MGraph es)  = MGraph $ M.adjust f n es
-  getNodes x (MGraph es)     = M.keys $ M.filter (elem x) es 
-  removeEdge k e (MGraph es) = MGraph $ M.adjust (filter (/= e)) k es
+  getNodesWith f (MGraph es)     = M.keys $ M.filter f es 
+  removeEdgeWith f k e (MGraph es) = MGraph $ M.adjust f k es
   removeNode k (MGraph es)   = MGraph $ M.delete k es
 
 instance (Ord n) => Monoid (MGraph n e) where
   mempty = MGraph M.empty
-  mappend (MGraph es) (MGraph es') = MGraph $ M.unionWith (++) es es'
+  mappend (MGraph es) (MGraph es') = MGraph $ M.union es es'
 
 
 getKeyIM :: Eq a => a -> I.IntMap a -> [Int]
@@ -143,8 +151,6 @@ incAndRecur s n= tag s (succ n)
 
 -- | Given a statement, return all variables that are referenced inside that
 -- statement
--- allVars :: Stmt -> S.Set Var
-
 allVars :: Stmt -> S.Set Var
 allVars (BL (RBinary _ (V s1) (V s2))) = S.fromList [s1, s2]
 allVars (BL (Not b))                   = allVars (BL b)
@@ -162,12 +168,6 @@ allVars _                            = mempty
 recurAndGet :: [Stmt] -> S.Set Var
 recurAndGet = S.unions . fmap allVars
   
--- | Given a Statement, pack the nodes in a graph with those statements
--- packNodes :: Stmt -> DGraph -> DGraph
--- packNodes a@(Let var _) g = addNode (var, a) g
--- packNodes (Seq ss)      g = mconcat $ flip packNodes g <$> ss
--- packNodes a             g = addNode ("", a) g
-
 definedIn :: Var -> LineMap -> [Int]
 definedIn var lm = I.keys $ I.filter letDef lm
   where letDef (Let v _) = v == var
@@ -184,26 +184,42 @@ isLetDef _   _         = False
 stealEdges :: NNode -> NNode -> LGraph -> LGraph
 stealEdges n1 n2 g = g''
   where 
-    e2s = getEdges n2 g
+    e2s = getEdge n2 g
     g' = alterEdge (nub . (++e2s)) n1 g
     g'' = removeNode n2 g'
 
 -- | Given a statement, and a graph, add data edges to that graph
 type Engine s r a = StateT s (Reader r) a
 
--- toDataDCFG :: Stmt -> LineMap -> LGraph -> LGraph
+existsCheck :: Stmt -> Engine LGraph LineMap LGraph
+existsCheck s@(Let var s') =
+  do lm <- ask
+     g <- get
+     let lineNumber = last $ getKeyIM s lm -- should always be a singleton
+         posNodes = getNodesWith (elem $ dataWrap lineNumber) g
+     if null posNodes                      -- if empty, then we have a new node
+       then return $ addNode lineNumber g
+       else do return $ addNode lineNumber g -- else we had node, then steal
+               return $ foldr (stealEdges lineNumber) g posNodes
+existsCheck _             = get
+
+-- addDeps :: Stmt -> Engine LGraph LineMap LGraph
+-- addDeps s(Let var s') = 
 -- toDataDCFG :: Stmt -> Engine LGraph LineMap ()
 -- toDataDCFG s@(Let var s') = do
 --   lm <- ask
 --   g <- get
---   let ns = nodes g
---   let vars = S.toList $ allVars s'
---   if null $ getKey s g
---     then addNode $ getKey s lm
---     else 
+--   let lineNumber = last $ var lm --should always be a singleton, if not take head
+--       posNodes = getNodes lineNumber
+--       vars = S.toList $ allVars s' 
+--   if null posNodes -- then this var has not been defined before
+--     then addNode lineNumber g
+--     else do addNode lineNumber g
+--             stealEdges
+
   -- check if var has been defined before
-      -- if it has then steal edges, then remove edges
-      -- if it has not then add with no edges
+  --     if it has then steal edges, then remove edges
+  --     if it has not then add with no edges
   -- Check all vars for all nodes, if those vars are referenced add a data edge
 -- toDataDCFG s@(If c t e) g = mconcat $ toDataDCFG <$>
 --                             [BL c, t , e] <*> g : (helper <$> vars <*> ns) 
@@ -247,17 +263,17 @@ type Engine s r a = StateT s (Reader r) a
 
 -- | Given a graph, return an AST
 -- this is some sort of fold, also a CSP, with most constrained var strategy
-toAST' :: DGraph -> [Stmt]
-toAST' (MGraph es)
-  | null l = []
-  | otherwise = (snd . fst $ m) :
-                toAST' (MGraph $ es `M.difference` M.fromList [m])
-  where
-    l = M.toList es
-    m = argmax (length . snd) l
+-- toAST' :: DGraph -> [Stmt]
+-- toAST' (MGraph es)
+--   | null l = []
+--   | otherwise = (snd . fst $ m) :
+--                 toAST' (MGraph $ es `M.difference` M.fromList [m])
+--   where
+--     l = M.toList es
+--     m = argmax (length . snd) l
 
-toAST :: DGraph -> Stmt
-toAST es = Seq $ toAST' es
+-- toAST :: DGraph -> Stmt
+-- toAST es = Seq $ toAST' es
 
 -- staticSlice :: Var -> DGraph -> DGraph
 -- staticSlice var d@(MGraph ex) = ns `mappend` helper' (edgeDefs) d
@@ -268,9 +284,9 @@ toAST es = Seq $ toAST' es
 --         ns = graph . fmap (flip (,) []) . nub $ M.keys defs
 
 -- The [Node] here is just an list of edges stripped of the their dependency type
-helper' :: [Node] -> DGraph -> DGraph
-helper' []      _          = mempty
-helper' (x:xs) d@(MGraph ex) = (MGraph $ M.fromList [(x, [])]) `mappend`
-                               helper' xs d `mappend` helper' esNodes d 
-  where es = ex M.! x
-        esNodes = fmap unEdge es
+-- helper' :: [Node] -> DGraph -> DGraph
+-- helper' []      _          = mempty
+-- helper' (x:xs) d@(MGraph ex) = (MGraph $ M.fromList [(x, [])]) `mappend`
+--                                helper' xs d `mappend` helper' esNodes d 
+--   where es = ex M.! x
+--         esNodes = fmap unEdge es
