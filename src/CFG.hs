@@ -70,23 +70,29 @@ class Graph g n e where
   getNodesWith :: (e -> Bool) -> g n e -> [n]
   removeEdgeWith :: (e -> e) -> n -> g n e -> g n e
   removeNode :: n -> g n e -> g n e
+  filterGraph :: (n -> e -> Bool) -> g n e -> g n e 
+  filterEdges :: (e -> Bool) -> g n e -> g n e
+  foldrGraph :: (n -> e -> a -> a) -> a -> g n e -> a
 
 class (Graph g n e) => CFG g n e where
   getDataDeps    :: g n e -> [Node]
   getControlDeps :: g n e -> [Node]
 
 instance (Ord n, Eq e, Monoid e) => Graph MGraph n e where
-  graph                      = MGraph . M.fromList
-  nodes (MGraph xs)          = M.keys xs
-  edges (MGraph es)          = M.toList es
-  addNode n                  = addEdgeWith mappend n mempty
-  addNodeWEdge n e (MGraph es) = MGraph $ M.insert n e es
-  addEdgeWith f n e (MGraph es) = MGraph $ M.insertWith f n e es
-  getEdge n (MGraph es)     = es M.! n --exception if node not in map
-  alterEdge f n (MGraph es)  = MGraph $ M.adjust f n es
+  graph                          = MGraph . M.fromList
+  nodes (MGraph xs)              = M.keys xs
+  edges (MGraph es)              = M.toList es
+  addNode n                      = addEdgeWith mappend n mempty
+  addNodeWEdge n e (MGraph es)   = MGraph $ M.insert n e es
+  addEdgeWith f n e (MGraph es)  = MGraph $ M.insertWith f n e es
+  getEdge n (MGraph es)          = es M.! n --exception if node not in map
+  alterEdge f n (MGraph es)      = MGraph $ M.adjust f n es
   getNodesWith f (MGraph es)     = M.keys $ M.filter f es
   removeEdgeWith f k (MGraph es) = MGraph $ M.adjust f k es
-  removeNode k (MGraph es)   = MGraph $ M.delete k es
+  removeNode k (MGraph es)       = MGraph $ M.delete k es
+  filterGraph p (MGraph es)      = MGraph $ M.filterWithKey p es
+  filterEdges p (MGraph es)      = MGraph $ M.filter p es
+  foldrGraph p acc (MGraph es)   = M.foldrWithKey p acc es
 
 instance (Ord n) => Monoid (MGraph n [e]) where
   mempty = MGraph M.empty
@@ -159,23 +165,25 @@ allVars _                            = mempty
 recurAndGet :: [Stmt] -> S.Set Var
 recurAndGet = S.unions . fmap allVars
 
--- | given a variable, and the lineMap of the program, return the key that
--- represents the statement that defined the variable, in the case there is more
--- than one, take the most recent that is
--- definedIn :: Var -> Int -> LineMap -> Int
-definedIn :: Var -> ([Int] -> [Int]) -> LineMap -> Int
-definedIn var f lm = maximum . f . I.keys $ I.filter letDef lm
+-- | Given a variable and a statement, is the var defined in the stmt?
+isLetDef :: Var -> Stmt -> Bool
+isLetDef var (Let v _) = var == v
+isLetDef _   _         = False
+
+-- | given a variable, a function and the lineMap of the program, return the keys
+-- that represents the statement that defined the variable after applying some
+-- function f.
+definedIn :: Var -> ([Int] -> [Int]) -> LineMap -> [Int]
+definedIn var f lm = f . I.keys $ I.filter letDef lm
   where letDef (Let v _) = v == var
         letDef _         = False
+
+lastDefinedIn :: Var -> ([Int] -> [Int]) -> LineMap -> Int
+lastDefinedIn var f lm = maximum $ definedIn var f lm --want to eta reduce here
 
 -- | Transform a statement to a lineMap, keys are line numbers, values at stmts
 toLineMap :: Stmt -> LineMap
 toLineMap = I.fromList . flip tag 0
-
--- | Given a variable and a statement, is the var defined in the stmt?
-isLetDef :: String -> Stmt -> Bool
-isLetDef var (Let v _) = var == v
-isLetDef _   _         = False
 
 -- | node 1 takes all the edges from node 2, node 2's is removed
 stealEdges :: Node -> Node -> LGraph -> LGraph
@@ -219,7 +227,7 @@ getDataDeps' s           = S.toList $ allVars s
 -- | given a statement find all dependencies for the statement as a list of nodes
 getDeps :: (Int, Stmt) -> Engine LGraph LineMap [Int]
 getDeps (i, s) =
-  ask >>= \lm -> return . fmap (flip3 definedIn lm (filter (<i))) $ getDataDeps' s
+  ask >>= \lm -> return . fmap (flip3 lastDefinedIn lm (filter (<i))) $ getDataDeps' s
   where flip3 f x y z = f z y x
 
 -- | Given a statement, find all dependencies, and then add them to the graph
@@ -254,7 +262,6 @@ getContDeps' ss xs = fst <$> intersectBy (\x y -> snd x == snd y) ss xs
   
 getContDeps :: (Int, Stmt) -> [Node]
 getContDeps (i, If b t e)  = fst <$> tail (tag (If b t e) i)
--- getContDeps ((i, If _ t e):ss)  = getContDeps' ss $ tag t i ++ tag e i
 getContDeps (i, While b e) = fst <$> tail (tag (While b e) i)
 getContDeps _         = []
 
@@ -277,8 +284,9 @@ toCCFG (b@(i, _):ss) = do
   toCCFG ss
 toCCFG _ = get
       
-data AST var val = AST (Domain Node DEdge)
+staticSlice :: Var -> LineMap -> LGraph -> LGraph
+staticSlice v lm = filterGraph (\n _ -> n `elem` defs)
+  where defs = definedIn v id lm
 
--- instance CSP AST Node DEdge where
---   vars = variables
-  -- domains g = M.fromList $ edges g
+toAST :: LGraph -> LineMap -> [Stmt]
+toAST g lm = foldrGraph
