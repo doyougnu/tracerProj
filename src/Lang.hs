@@ -75,9 +75,17 @@ emptyState = empty
 testState :: VarState
 testState = fromList [("x", AR (I 0)), ("y", AR (I 10))]
 
-whileTest :: Stmt
-whileTest = While (Not (RBinary Equal (V "x") (V "y")))
+badwhileTest :: Stmt
+badwhileTest = While (Not (RBinary Equal (V "x") (V "y")))
   (Let "x" (AR (ABinary Add (V "x") (I 1))))
+
+whileTest :: Stmt
+whileTest = Seq [ Let "x" (AR $ I 0)
+                , Let "y" (AR $ I 100)
+                , Let "x" (AR $ I 5)
+                , While (Not (RBinary Equal (V "x") (V "y")))
+                  (Let "x" (AR (ABinary Add (V "x") (I 1))))
+                ]
 
 seqTest :: Stmt
 seqTest = Seq [Let "x" (AR (I 2)),Let "y" (AR (I 3)),Let "x" (AR (V "y")),NoOp]

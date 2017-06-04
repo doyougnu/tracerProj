@@ -188,7 +188,7 @@ stealEdges n1 n2 g = g''
 -- lineNumber :: (Stmt) -> Engine LGraph LineMap Int
 -- lineNumber s = ask >>= return . last . getKeyIM s --exception on Seq
 
-tester x = runEngine (toDataDCFG (tag x 0)) x
+tester x = runEngine (toDCFG (tag x 0)) x
 
 -- | Given a statement, and a graph, add data edges to that graph
 existsCheck :: (Int, Stmt) -> Engine LGraph LineMap LGraph
@@ -225,15 +225,15 @@ addDeps a@(i, _) = do
       helper node ds
     helper _ [] = get
 
-toDataDCFG :: [(Int, Stmt)] -> Engine LGraph LineMap LGraph
-toDataDCFG [] = get
-toDataDCFG (a@(i, _):ss) = do
+toDCFG :: [(Int, Stmt)] -> Engine LGraph LineMap LGraph
+toDCFG [] = get
+toDCFG (a@(i, _):ss) = do
   g <- get
   let newGraph = addNode i g
   put newGraph
   existsCheck a
   addDeps a
-  toDataDCFG ss
+  toDCFG ss
 
 -- | Given a statement, and a graph, add control flow edges
 -- toDataCCFG :: Stmt -> DGraph -> DGraph
@@ -248,7 +248,7 @@ toDataDCFG (a@(i, _):ss) = do
 -- toDataCCFG _             g = g
 
 -- toCFG :: Stmt -> DGraph
--- toCFG s = mconcat $ [toDataCCFG s, toDataDCFG s] <*> pure (packNodes s mempty)
+-- toCFG s = mconcat $ [toDataCCFG s, toDCFG s] <*> pure (packNodes s mempty)
 
 -- | Given a graph, return an AST
 -- this is some sort of fold, also a CSP, with most constrained var strategy
