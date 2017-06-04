@@ -87,6 +87,35 @@ whileTest = Seq [ Let "x" (AR $ I 0)
                   (Let "x" (AR (ABinary Add (V "x") (I 1))))
                 ]
 
+ifTest :: Stmt
+ifTest = Seq [ Let "aa" (AR $ I 0)
+             , Let "bb" (AR $ I 100)
+             , If (RBinary Less (V "aa") (V "bb"))
+               (Seq [ AR (ABinary Subtract (V "bb") (I 10))
+                    , Let "aa" (AR . Neg $ V "aa")
+                    ])
+               NoOp
+             ]
+
+ifTest2 :: Stmt
+ifTest2 = Seq [ Let "aa" (AR $ I 0)
+             , Let "bb" (AR $ I 100)
+             , If (BBinary And (B True) (B True))
+               (Seq [ AR (ABinary Subtract (V "bb") (I 10))
+                    , Let "aa" (AR . Neg $ V "aa")
+                    ])
+               NoOp
+             ]
+
+ifTest3 :: Stmt
+ifTest3 = Seq [ Let "aa" (AR $ I 0)
+             , Let "bb" (AR $ I 100)
+             , Seq [ AR (ABinary Subtract (V "bb") (I 10))
+                    , Let "aa" (AR . Neg $ V "aa")
+                    ]
+             ]
+
+
 seqTest :: Stmt
 seqTest = Seq [Let "x" (AR (I 2)),Let "y" (AR (I 3)),Let "x" (AR (V "y")),NoOp]
 
