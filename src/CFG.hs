@@ -88,9 +88,9 @@ instance (Ord n, Eq e, Monoid e) => Graph MGraph n e where
   removeEdgeWith f k (MGraph es) = MGraph $ M.adjust f k es
   removeNode k (MGraph es)   = MGraph $ M.delete k es
 
-instance (Ord n) => Monoid (MGraph n e) where
+instance (Ord n) => Monoid (MGraph n [e]) where
   mempty = MGraph M.empty
-  mappend (MGraph es) (MGraph es') = MGraph $ M.union es es'
+  mappend (MGraph es) (MGraph es') = MGraph $ M.unionWith (++) es es'
 
 
 getKeyIM :: Eq a => a -> I.IntMap a -> [Int]
@@ -230,7 +230,7 @@ addDataDeps a@(i, _) = do
   where
     helper node (d:ds) = do
       g <- get
-      let g' = addEdgeWith (++) d [dataWrap node] g
+      let g' = addEdgeWith (++) node [dataWrap d] g
       put g'
       helper node ds
     helper _ [] = get
@@ -268,12 +268,12 @@ addContDeps node (d:ds) = do
 
 -- | Given a statement, and a graph, add control flow edges
 toCCFG :: [(Int, Stmt)] -> Engine LGraph LineMap LGraph
-toCCFG a@(b@(i, _):ss) = do
+toCCFG (b@(i, _):ss) = do
   g <- get
   let deps = getContDeps b
       newGraph = addNode i g
   put newGraph
-  addContDeps i $ trace (show b) deps
+  addContDeps i deps
   toCCFG ss
 toCCFG _ = get
       
