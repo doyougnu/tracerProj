@@ -6,7 +6,7 @@ import Control.Monad.State
 import qualified Data.Map as M
 import qualified Data.IntMap as I
 import qualified Data.Set as S
-import Data.List (nub, intersectBy, (\\), notElem)
+import Data.List (nub, intersectBy, (\\), notElem, sort)
 import Debug.Trace (trace)
 
 import Lang
@@ -291,22 +291,40 @@ toCCFG (b@(i, _):ss) = do
 toCCFG _ = get
       
 staticSlice :: Var -> LineMap -> LGraph -> LGraph
-staticSlice v lm = filterGraph (\n _ -> n `elem` defs)
+staticSlice v lm = filterEdges (\n -> any (\x -> (unEdge x) `elem` defs) n)
   where defs = definedIn v id lm
 
-t x = staticSlice "aa" (toLineMap x) (tester x)
-z = t ifTest
+t x var = staticSlice var (toLineMap x) (tester x)
+a x var = toAST (t x var) (toLineMap x)
+
+contDefDeps :: LGraph -> S.Set Node
+contDefDeps = S.fromList . nodes . filterEdges helper
+  where
+    helper :: [DEdge] -> Bool
+    helper = any edgeTest
+    edgeTest (Edge Control _) = True
+    edgeTest _                = False
 
 -- Should be a set, but sets are required to be an instance of Ord, downside to
 -- FP?
-toAST' :: LGraph -> [Node]
-toAST' = reverse . foldrGraph (\n es acc -> edgeHandler n (fmap unEdge es) acc) []
-  where edgeHandler n (e:es) acc
-          | e `elem` acc = edgeHandler n es acc
-          | otherwise    = edgeHandler n es (e:acc)
-        edgeHandler n []     acc
-          | n `elem` acc = acc
-          | otherwise    = n : acc
+toAST' :: LGraph -> S.Set Node
+toAST' = foldrGraph
+           (\n e acc -> n `S.insert` S.fromList (fmap unEdge e) `S.union` acc)
+           S.empty
+
+-- toAST' :: LGraph -> [Node]
+-- toAST' g = sort $ (\\ contDefDeps g) $ foldrGraph edgeHandler [] g
+--   where edgeHandler n (Edge Data e:es) acc
+--           | e `elem` acc = edgeHandler n es acc
+--           | otherwise    = edgeHandler n es (e:acc)
+--         edgeHandler n (Edge Control e:es) acc
+--           | e `elem` acc = edgeHandler n es (acc \\ [n])
+--           | otherwise    = edgeHandler n es ((e:acc) \\ [n])
+--         edgeHandler n []     acc
+--           | n `elem` acc = acc
+--           | otherwise    = n : acc
 
 toAST :: LGraph -> LineMap -> Stmt
-toAST g lm = Seq $ (lm I.!) <$> toAST' g
+toAST g lm = Seq . S.toList .
+             S.map (lm I.!) .
+             flip S.difference (contDefDeps g) $ toAST' g
