@@ -125,10 +125,10 @@ mentions _   _                              = False
 -- | Given a integer and a statement, return the line number in sequence
 -- MONADIFY WHEN YOU HAVE TIME
 tag :: Stmt -> Int -> [(Int, Stmt)]
-tag (If b t e) n = (n, If b NoOp NoOp) : ts ++ tag e (succ n')
+tag (If b t e) n = (n, If b t e) : ts ++ tag e (succ n')
   where ts = tag t (succ n)
         n' = fst . last $ ts
-tag (While b e) n = (n, While b NoOp) : tag e (succ n)
+tag (While b e) n = (n, While b e) : tag e (succ n)
 -- can't get this fold to work right
 -- tag (Seq xs) n = foldr ((++) . flip tag n) [] xs
 tag (Seq  [])    _ = [] 
@@ -230,7 +230,7 @@ addDataDeps a@(i, _) = do
   where
     helper node (d:ds) = do
       g <- get
-      let g' = addEdgeWith (++) node [dataWrap d] g
+      let g' = addEdgeWith (++) d [dataWrap node] g
       put g'
       helper node ds
     helper _ [] = get
@@ -252,11 +252,11 @@ toDCFG (a@(i, _):ss) = do
 getContDeps' :: (Eq b) => [(a, b)] -> [(a, b)] -> [a]
 getContDeps' ss xs = fst <$> intersectBy (\x y -> snd x == snd y) ss xs
   
-getContDeps :: [(Int, Stmt)] -> [Node]
-getContDeps ((i, If _ t e):ss)  = getContDeps' ss (tag t i ++ tag e i)
-getContDeps ((i, While _ e):ss) = getContDeps' ss (tag e i)
-getContDeps ((_, _):ss)         = getContDeps ss 
-getContDeps []                  = []
+getContDeps :: (Int, Stmt) -> [Node]
+getContDeps (i, If b t e)  = fst <$> tail (tag (If b t e) i)
+-- getContDeps ((i, If _ t e):ss)  = getContDeps' ss $ tag t i ++ tag e i
+getContDeps (i, While b e) = fst <$> tail (tag (While b e) i)
+getContDeps _         = []
 
 addContDeps :: Node -> [Node] -> Engine LGraph LineMap LGraph
 addContDeps _ [] = get
@@ -268,12 +268,12 @@ addContDeps node (d:ds) = do
 
 -- | Given a statement, and a graph, add control flow edges
 toCCFG :: [(Int, Stmt)] -> Engine LGraph LineMap LGraph
-toCCFG a@((i, _):ss) = do
+toCCFG a@(b@(i, _):ss) = do
   g <- get
-  let deps = getContDeps a
+  let deps = getContDeps b
       newGraph = addNode i g
   put newGraph
-  addContDeps i deps
+  addContDeps i $ trace (show b) deps
   toCCFG ss
 toCCFG _ = get
       
