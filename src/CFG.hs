@@ -6,11 +6,11 @@ import Control.Monad.State
 import qualified Data.Map as M
 import qualified Data.IntMap as I
 import qualified Data.Set as S
-import Data.List (nub, intersectBy)
+import Data.List (nub, intersectBy, (\\), notElem)
 import Debug.Trace (trace)
 
 import Lang
-import CSP
+
 
 -- | Two Types of Edges, data dependence, control flow dependence
 data Etype = Data
@@ -73,6 +73,7 @@ class Graph g n e where
   filterGraph :: (n -> e -> Bool) -> g n e -> g n e 
   filterEdges :: (e -> Bool) -> g n e -> g n e
   foldrGraph :: (n -> e -> a -> a) -> a -> g n e -> a
+  foldlGraph :: (a -> n -> e -> a) -> a -> g n e -> a
 
 class (Graph g n e) => CFG g n e where
   getDataDeps    :: g n e -> [Node]
@@ -93,6 +94,7 @@ instance (Ord n, Eq e, Monoid e) => Graph MGraph n e where
   filterGraph p (MGraph es)      = MGraph $ M.filterWithKey p es
   filterEdges p (MGraph es)      = MGraph $ M.filter p es
   foldrGraph p acc (MGraph es)   = M.foldrWithKey p acc es
+  foldlGraph p acc (MGraph es)   = M.foldlWithKey p acc es
 
 instance (Ord n) => Monoid (MGraph n [e]) where
   mempty = MGraph M.empty
@@ -178,8 +180,13 @@ definedIn var f lm = f . I.keys $ I.filter letDef lm
   where letDef (Let v _) = v == var
         letDef _         = False
 
+-- lastDefinedIn :: Var -> ([Int] -> [Int]) -> LineMap -> Int
+-- lastDefinedIn var f lm = maximum $ definedIn var f lm --want to eta reduce here
 lastDefinedIn :: Var -> ([Int] -> [Int]) -> LineMap -> Int
-lastDefinedIn var f lm = maximum $ definedIn var f lm --want to eta reduce here
+lastDefinedIn var f lm = maximum . f . I.keys $ I.filter letDef lm
+  where letDef (Let v _) = v == var
+        letDef _         = False
+ 
 
 -- | Transform a statement to a lineMap, keys are line numbers, values at stmts
 toLineMap :: Stmt -> LineMap
@@ -191,7 +198,6 @@ stealEdges n1 n2 g = g'
   where
     e2s = getEdge n2 g
     g' = alterEdge (nub . (++e2s)) n1 g
-    -- g'' = removeNode n2 g'
 
 tester1 :: Stmt -> LGraph
 tester1 s = fst $ runEngine (toDCFG (tag s 0)) s
@@ -269,8 +275,8 @@ addContDeps :: Node -> [Node] -> Engine LGraph LineMap LGraph
 addContDeps _ [] = get
 addContDeps node (d:ds) = do
         g <- get
-        let g' = addEdgeWith (++) d [controlWrap node] g -- slow
-        put g'
+        let newG = addEdgeWith (++) d [controlWrap node] g -- slow
+        put newG
         addContDeps node ds
 
 -- | Given a statement, and a graph, add control flow edges
@@ -288,5 +294,19 @@ staticSlice :: Var -> LineMap -> LGraph -> LGraph
 staticSlice v lm = filterGraph (\n _ -> n `elem` defs)
   where defs = definedIn v id lm
 
-toAST :: LGraph -> LineMap -> [Stmt]
-toAST g lm = foldrGraph
+t x = staticSlice "aa" (toLineMap x) (tester x)
+z = t ifTest
+
+-- Should be a set, but sets are required to be an instance of Ord, downside to
+-- FP?
+toAST' :: LGraph -> [Node]
+toAST' = reverse . foldrGraph (\n es acc -> edgeHandler n (fmap unEdge es) acc) []
+  where edgeHandler n (e:es) acc
+          | e `elem` acc = edgeHandler n es acc
+          | otherwise    = edgeHandler n es (e:acc)
+        edgeHandler n []     acc
+          | n `elem` acc = acc
+          | otherwise    = n : acc
+
+toAST :: LGraph -> LineMap -> Stmt
+toAST g lm = Seq $ (lm I.!) <$> toAST' g
