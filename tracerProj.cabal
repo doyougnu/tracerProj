@@ -34,9 +34,6 @@ library
                        FlexibleInstances,
                        TypeSynonymInstances,
                        OverloadedStrings,
-                       DeriveFunctor,
-                       DeriveFoldable,
-                       DeriveTraversable,
                        MultiParamTypeClasses
 
 executable tracerProj-exe

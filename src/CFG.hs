@@ -4,9 +4,8 @@ import qualified Data.Map as M
 import qualified Data.IntMap as I
 import qualified Data.Set as S
 import Control.Monad.Reader
--- import Control.Monad.Writer
 import Control.Monad.State
-import Data.List.Extras (argmax)
+-- import Control.Monad (foldM)
 import Data.List (nub)
 -- import Debug.Trace (trace)
 
@@ -53,7 +52,12 @@ type DGraph = MGraph Node DEdge
 -- | An integer map where keys are line numbers, values are statements.
 type LineMap = I.IntMap Stmt
 type NNode = Int
-type LGraph = MGraph NNode [(Edge Etype NNode)]
+type LGraph = MGraph NNode [Edge Etype NNode]
+
+-- | Use a reader monad to hold the lineNumber map, state to track graph
+type Engine s r a = StateT s (Reader r) a
+
+runEngine i i' = runReader (runStateT i mempty) (toLineMap i')
 
 -- could avoid with newtype + record syntax
 unGraph :: MGraph n e -> M.Map n e
@@ -69,7 +73,7 @@ class Graph g n e where
   getEdge :: n -> g n e -> e
   alterEdge :: (e -> e) -> n -> g n e -> g n e
   getNodesWith :: (e -> Bool) -> g n e -> [n]
-  removeEdgeWith :: (e -> e) -> n -> e -> g n e -> g n e
+  removeEdgeWith :: (e -> e) -> n -> g n e -> g n e
   removeNode :: n -> g n e -> g n e
 
 class (Graph g n e) => CFG g n e where
@@ -80,13 +84,13 @@ instance (Ord n, Eq e, Monoid e) => Graph MGraph n e where
   graph                      = MGraph . M.fromList
   nodes (MGraph xs)          = M.keys xs
   edges (MGraph es)          = M.toList es
-  addNode n g                = addNodeWEdge n mempty g
+  addNode n                = addNodeWEdge n mempty
   addNodeWEdge n e (MGraph es) = MGraph $ M.insert n e es
   addEdgeWith f n e (MGraph es) = MGraph $ M.insertWith f n e es
   getEdge n (MGraph es)     = es M.! n --exception if node not in map
   alterEdge f n (MGraph es)  = MGraph $ M.adjust f n es
-  getNodesWith f (MGraph es)     = M.keys $ M.filter f es 
-  removeEdgeWith f k e (MGraph es) = MGraph $ M.adjust f k es
+  getNodesWith f (MGraph es)     = M.keys $ M.filter f es
+  removeEdgeWith f k (MGraph es) = MGraph $ M.adjust f k es
   removeNode k (MGraph es)   = MGraph $ M.delete k es
 
 instance (Ord n) => Monoid (MGraph n e) where
@@ -126,28 +130,16 @@ mentions _   _                              = False
 -- | Given a integer and a statement, return the line number in sequence
 tag :: Stmt -> Int -> [(Int, Stmt)]
 tag s@(If _ t e) n = (n, s) : tag t (succ n) ++ tag e (succ n)
-tag s@(While _ e) n = (n, s) : tag e (succ n)
+tag (While b e) n = (n, While b NoOp) : tag e (succ n)
 -- can't get this fold to work right
 -- tag (Seq xs) n = foldr ((++) . flip tag n) [] xs
+tag (Seq  [])    _ = [] 
 tag (Seq (x:xs)) n = tag x n ++ tag (Seq xs) (succ n)
-tag s n = [(succ n, s)]
+tag s n = [(n, s)]
 
 -- | Simple helper function passes the stmt to tag with an incremented n
-incAndRecur :: Stmt -> Int -> [(Int, Stmt)] 
-incAndRecur s n= tag s (succ n) 
-
--- | Given a statement, lift everything to statement level
--- decompose :: Stmt -> [Stmt]
--- decompose (Let _ s')             = decompose s'
--- decompose (If b c t)             = [BL b, c, t]
--- decompose (While b e)            = [BL b, e]
--- decompose (Seq xs)               = xs >>= decompose
--- decompose (BL (RBinary _ x y))   = [AR x, AR y]
--- decompose (BL (BBinary _ b1 b2)) = [BL b1, BL b2]
--- decompose (BL (Not b))           = [BL b]
--- decompose (AR (ABinary _ a1 a2)) = [AR a1, AR a2]
--- decompose (AR (V var))           = [AR $ V var]
--- decompose _                      = []
+incAndRecur :: Stmt -> Int -> [(Int, Stmt)]
+incAndRecur s n= tag s (succ n)
 
 -- | Given a statement, return all variables that are referenced inside that
 -- statement
@@ -167,15 +159,20 @@ allVars _                            = mempty
 -- | allVars helper function to map allVars and convert to Set
 recurAndGet :: [Stmt] -> S.Set Var
 recurAndGet = S.unions . fmap allVars
-  
-definedIn :: Var -> LineMap -> [Int]
-definedIn var lm = I.keys $ I.filter letDef lm
+
+-- | given a variable, and the lineMap of the program, return the key that
+-- represents the statement that defined the variable, in the case there is more
+-- than one, take the most recent
+definedIn :: Var -> Int -> LineMap -> Int
+definedIn var i lm = maximum . filter (<i) . I.keys $ I.filter letDef lm
   where letDef (Let v _) = v == var
         letDef _         = False
 
+-- | Transform a statement to a lineMap, keys are line numbers, values at stmts
 toLineMap :: Stmt -> LineMap
-toLineMap = I.fromList . flip tag 0 
+toLineMap = I.fromList . flip tag 0
 
+-- | Given a variable and a statement, is the var defined in the stmt?
 isLetDef :: String -> Stmt -> Bool
 isLetDef var (Let v _) = var == v
 isLetDef _   _         = False
@@ -183,68 +180,60 @@ isLetDef _   _         = False
 -- | node 1 takes all the edges from node 2, node 2's is removed
 stealEdges :: NNode -> NNode -> LGraph -> LGraph
 stealEdges n1 n2 g = g''
-  where 
+  where
     e2s = getEdge n2 g
     g' = alterEdge (nub . (++e2s)) n1 g
     g'' = removeNode n2 g'
 
--- | Given a statement, and a graph, add data edges to that graph
-type Engine s r a = StateT s (Reader r) a
+-- lineNumber :: (Stmt) -> Engine LGraph LineMap Int
+-- lineNumber s = ask >>= return . last . getKeyIM s --exception on Seq
 
-existsCheck :: Stmt -> Engine LGraph LineMap LGraph
-existsCheck s@(Let var s') =
-  do lm <- ask
-     g <- get
-     let lineNumber = last $ getKeyIM s lm -- should always be a singleton
-         posNodes = getNodesWith (elem $ dataWrap lineNumber) g
+tester x = runEngine (toDataDCFG (tag x 0)) x
+
+-- | Given a statement, and a graph, add data edges to that graph
+existsCheck :: (Int, Stmt) -> Engine LGraph LineMap LGraph
+existsCheck (i, Let _  _) =
+  do g <- get
+     -- ln <- lineNumber s 
+     let posNodes = getNodesWith (elem $ dataWrap i) g
      if null posNodes                      -- if empty, then we have a new node
-       then return $ addNode lineNumber g
-       else do return $ addNode lineNumber g -- else we had node, then steal
-               return $ foldr (stealEdges lineNumber) g posNodes
+       then return $ addNode i g
+       else do return $ addNode i g -- else we had node, then steal
+               return $ foldr (stealEdges i) g posNodes
 existsCheck _             = get
 
--- addDeps :: Stmt -> Engine LGraph LineMap LGraph
--- addDeps s(Let var s') = 
--- toDataDCFG :: Stmt -> Engine LGraph LineMap ()
--- toDataDCFG s@(Let var s') = do
---   lm <- ask
---   g <- get
---   let lineNumber = last $ var lm --should always be a singleton, if not take head
---       posNodes = getNodes lineNumber
---       vars = S.toList $ allVars s' 
---   if null posNodes -- then this var has not been defined before
---     then addNode lineNumber g
---     else do addNode lineNumber g
---             stealEdges
+getDeps' :: Stmt -> [Var]
+getDeps' (Let _ s)   = S.toList $ allVars s
+getDeps' (If b t e)  = S.toList . S.unions $ allVars <$> [BL b, t, e]
+getDeps' (While b e) = S.toList . S.unions $ allVars <$> [BL b, e]
+getDeps' (Seq ss)    = concatMap getDeps' ss
+getDeps' s           = S.toList $ allVars s
 
-  -- check if var has been defined before
-  --     if it has then steal edges, then remove edges
-  --     if it has not then add with no edges
-  -- Check all vars for all nodes, if those vars are referenced add a data edge
--- toDataDCFG s@(If c t e) g = mconcat $ toDataDCFG <$>
---                             [BL c, t , e] <*> g : (helper <$> vars <*> ns) 
---   where
---     ns = nodes g
---     vars = S.toList . S.unions $ [allVars (BL c), allVars t, allVars e]
---     helper x y = if x == fst y
---                  then addEdge y (Edge Data ("", s)) g
---                  else g
+getDeps :: (Int, Stmt) -> Engine LGraph LineMap [Int]
+getDeps (i, s) = ask >>= \lm -> return . fmap (flip3 definedIn lm i) $ getDeps' s
+  where flip3 f x y z = f z y x
 
--- toDataDCFG s@(While b e) g = mconcat $ [ toDataDCFG (BL b)
---                                        , toDataDCFG e
---                                        ] <*> g : (helper <$> vars <*> ns)
---   where
---     ns = nodes g
---     vars = S.toList . S.unions $ [allVars (BL b), allVars e]
---     helper x y = if x == fst y
---                  then addEdge y (Edge Data ("", s)) g
---                  else g
--- toDataDCFG (Seq ss) g = mconcat $ flip toDataDCFG g <$> ss
--- toDataDCFG _        g = g
+addDeps :: (Int, Stmt) -> Engine LGraph LineMap LGraph
+addDeps a@(i, _) = do
+  deps <- getDeps a
+  helper i deps
+  where
+    helper node (d:ds) = do
+      g <- get
+      let g' = addEdgeWith (++) node [dataWrap d] g
+      put g'
+      helper node ds
+    helper _ [] = get
 
--- toDataDCFG :: Stmt -> LineMap -> LGraph -> DGraph
--- toDataDCFG n lm g =
---   where ns = nodes g
+toDataDCFG :: [(Int, Stmt)] -> Engine LGraph LineMap LGraph
+toDataDCFG [] = get
+toDataDCFG (a@(i, _):ss) = do
+  g <- get
+  let newGraph = addNode i g
+  put newGraph
+  existsCheck a
+  addDeps a
+  toDataDCFG ss
 
 -- | Given a statement, and a graph, add control flow edges
 -- toDataCCFG :: Stmt -> DGraph -> DGraph
