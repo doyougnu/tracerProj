@@ -1,36 +1,56 @@
 module Main where
 
+import Data.Text (pack)
+import Data.List (sort)
+import System.Directory (getDirectoryContents)
+import Text.Megaparsec (parse, parseErrorPretty)
+
 import Parser
 import Lang
 import Eval
 import Trace
-import Text.Megaparsec (parse, parseErrorPretty)
-import Data.Text (pack)
+import qualified CFG as C
 
 main :: IO ()
 main = return ()
 
--- | Helper function that takes a file name, and a function to apply to an AST
--- Once one is parsed
-inputProg :: String -> (Stmt -> IO ()) -> IO ()
-inputProg file f = do
-  program <- readFile $ "Programs/" ++ file ++ ".txt"
+-- | Read a program in as a string, parse it and apply function to AST 
+input :: String -> (Stmt -> IO ()) -> IO ()
+input file f = do
+  program <- readFile file
   let ast = parse langParser "" $ pack program
-  print ast
   case ast of
     Left err   -> putStr (parseErrorPretty err)
     Right ast' -> f ast'
+
+-- | Helper function that takes a file name, and a function to apply to an AST
+-- Once one is parsed, this is restricted to running programs from Programs/
+inputProg :: String -> (Stmt -> IO ()) -> IO ()
+inputProg file = input  ("Programs/" ++ file ++ ".txt")
 
 -- | Run the program and trace all computations
 traceTotalProg :: String -> IO ()
 traceTotalProg file = inputProg file (printTrace . flip traceAll emptyState)
 
 -- | Forward slice the program based on a Variable and trace all computations
-sliceAndTrace :: String -> Var -> IO ()
-sliceAndTrace file var = inputProg file (printTrace .
+oldSliceAndTrace :: String -> Var -> IO ()
+oldSliceAndTrace file var = inputProg file (printTrace .
                                          flip traceAll emptyState .
                                          holify var)
 
+oldSlice :: String -> Var -> IO ()
+oldSlice file var = inputProg file (print . flip evalProg emptyState . holify var)
+
+programs :: IO ()
+programs = getDirectoryContents "Programs/" >>= mapM_ putStrLn . drop 2 . sort
+
+printProgram :: String -> IO ()
+printProgram file = inputProg file print
+  
+staticSlice :: Var -> String -> IO ()
+staticSlice var file = inputProg file (print . C.genAST var)
+
+-- | list all the programs available to run
 -- | Run the program and print the final value and final state
 printRunProg :: String -> IO ()
 printRunProg file = inputProg file (print . flip runProg emptyState)

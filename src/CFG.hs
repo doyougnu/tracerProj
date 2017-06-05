@@ -1,4 +1,4 @@
-module CFG where
+module CFG (genAST) where
 
 import Control.Monad.Reader
 import Control.Monad.State
@@ -6,11 +6,11 @@ import Control.Monad.State
 import qualified Data.Map as M
 import qualified Data.IntMap as I
 import qualified Data.Set as S
-import Data.List (nub, intersectBy, (\\), notElem, sort)
+import qualified Data.List as L
+import Data.List (nub)
 import Debug.Trace (trace)
 
 import Lang
-
 
 -- | Two Types of Edges, data dependence, control flow dependence
 data Etype = Data
@@ -59,25 +59,22 @@ unGraph :: MGraph n e -> M.Map n e
 unGraph (MGraph xs) = xs
 
 class Graph g n e where
-  graph :: [(n, e)] -> g n e
-  nodes :: g n e -> [n]
-  edges :: g n e -> [(n, e)]
-  addNode :: n -> g n e -> g n e
-  addNodeWEdge :: n -> e -> g n e -> g n e
-  addEdgeWith :: (e -> e -> e) -> n -> e -> g n e -> g n e
-  getEdge :: n -> g n e -> e
-  alterEdge :: (e -> e) -> n -> g n e -> g n e
-  getNodesWith :: (e -> Bool) -> g n e -> [n]
+  graph          :: [(n, e)] -> g n e
+  nodes          :: g n e -> [n]
+  edges          :: g n e -> [(n, e)]
+  addNode        :: n -> g n e -> g n e
+  addNodeWEdge   :: n -> e -> g n e -> g n e
+  addEdgeWith    :: (e -> e -> e) -> n -> e -> g n e -> g n e
+  getEdge        :: n -> g n e -> e
+  alterEdge      :: (e -> e) -> n -> g n e -> g n e
+  getNodesWith   :: (e -> Bool) -> g n e -> [n]
   removeEdgeWith :: (e -> e) -> n -> g n e -> g n e
-  removeNode :: n -> g n e -> g n e
-  filterGraph :: (n -> e -> Bool) -> g n e -> g n e 
-  filterEdges :: (e -> Bool) -> g n e -> g n e
-  foldrGraph :: (n -> e -> a -> a) -> a -> g n e -> a
-  foldlGraph :: (a -> n -> e -> a) -> a -> g n e -> a
-
-class (Graph g n e) => CFG g n e where
-  getDataDeps    :: g n e -> [Node]
-  getControlDeps :: g n e -> [Node]
+  removeNode     :: n -> g n e -> g n e
+  filterGraph    :: (n -> e -> Bool) -> g n e -> g n e 
+  filterEdges    :: (e -> Bool) -> g n e -> g n e
+  foldrGraph     :: (n -> e -> a -> a) -> a -> g n e -> a
+  foldlGraph     :: (a -> n -> e -> a) -> a -> g n e -> a
+  foldEdges      :: (e -> a -> a) -> a -> g n e -> a
 
 instance (Ord n, Eq e, Monoid e) => Graph MGraph n e where
   graph                          = MGraph . M.fromList
@@ -95,40 +92,15 @@ instance (Ord n, Eq e, Monoid e) => Graph MGraph n e where
   filterEdges p (MGraph es)      = MGraph $ M.filter p es
   foldrGraph p acc (MGraph es)   = M.foldrWithKey p acc es
   foldlGraph p acc (MGraph es)   = M.foldlWithKey p acc es
+  foldEdges p acc (MGraph es)    = M.foldr p acc es
 
 instance (Ord n) => Monoid (MGraph n [e]) where
   mempty = MGraph M.empty
   mappend (MGraph es) (MGraph es') = MGraph $ M.unionWith (++) es es'
 
-
-getKeyIM :: Eq a => a -> I.IntMap a -> [Int]
-getKeyIM e = I.keys . I.filter (==e)
-
-getKey :: Eq e => e -> M.Map a e -> [a]
-getKey e = M.keys . M.filter (==e)
-
 -- Look into Scrap Your Boilerplate for this
 -- instance Foldable (DGraph n) where
 --   foldr f acc xs = M.foldr f acc (unGraph xs)
-
--- | Given a variable and a statement, return bool if that variable is ever
--- needed inside the statement
-mentions :: Var -> Stmt -> Bool
-mentions str (BL (RBinary _ (V s1) (V s2))) = s1 == str || s2 == str
-mentions str (AR (V s))                     = str == s
-mentions str (AR (ABinary _ a1 a2))         = mentions str (AR a1)
-                                              || mentions str (AR a2)
-
-mentions str (Let _ s)                      = mentions str s
-mentions str (If c t e)                     = mentions str (BL c)
-                                              || mentions str t
-                                              || mentions str e
-
-mentions str (While c e)                    = mentions str (BL c)
-                                              || mentions str e
-
-mentions str (Seq xs)                       = any (mentions str) xs
-mentions _   _                              = False
 
 -- | Given a integer and a statement, return the line number in sequence
 -- MONADIFY WHEN YOU HAVE TIME
@@ -143,10 +115,6 @@ tag (Seq  [])    _ = []
 tag (Seq (x:xs)) n = tag x n ++ tag (Seq xs) (succ n)
 tag s n = [(n, s)]
 
--- | Simple helper function passes the stmt to tag with an incremented n
-incAndRecur :: Stmt -> Int -> [(Int, Stmt)]
-incAndRecur s n= tag s (succ n)
-
 -- | Given a statement, return all variables that are referenced inside that
 -- statement
 allVars :: Stmt -> S.Set Var
@@ -156,21 +124,16 @@ allVars (Let _ s)                      = allVars s
 allVars (AR (V s))                     = S.singleton s
 allVars (AR (Neg s))                   = allVars (AR s)
   -- such repetition, much wow
-allVars (BL (BBinary _ b1 b2))       = recurAndGet [BL b1, BL b2]
-allVars (AR (ABinary _ a1 a2))       = recurAndGet [AR a1, AR a2]
-allVars (If c t e)                   = recurAndGet [BL c, t, e]
-allVars (While c e)                  = recurAndGet [BL c, e]
-allVars (Seq xs)                     = recurAndGet xs
-allVars _                            = mempty
+allVars (BL (BBinary _ b1 b2))         = recurAndGet [BL b1, BL b2]
+allVars (AR (ABinary _ a1 a2))         = recurAndGet [AR a1, AR a2]
+allVars (If c t e)                     = recurAndGet [BL c, t, e]
+allVars (While c e)                    = recurAndGet [BL c, e]
+allVars (Seq xs)                       = recurAndGet xs
+allVars _                              = mempty
 
 -- | allVars helper function to map allVars and convert to Set
 recurAndGet :: [Stmt] -> S.Set Var
 recurAndGet = S.unions . fmap allVars
-
--- | Given a variable and a statement, is the var defined in the stmt?
-isLetDef :: Var -> Stmt -> Bool
-isLetDef var (Let v _) = var == v
-isLetDef _   _         = False
 
 -- | given a variable, a function and the lineMap of the program, return the keys
 -- that represents the statement that defined the variable after applying some
@@ -180,13 +143,12 @@ definedIn var f lm = f . I.keys $ I.filter letDef lm
   where letDef (Let v _) = v == var
         letDef _         = False
 
--- lastDefinedIn :: Var -> ([Int] -> [Int]) -> LineMap -> Int
--- lastDefinedIn var f lm = maximum $ definedIn var f lm --want to eta reduce here
+-- | given a variable, and some unary f on lists, get the last line number that
+-- the variable was defined at (the maximum line number in this case)
 lastDefinedIn :: Var -> ([Int] -> [Int]) -> LineMap -> Int
 lastDefinedIn var f lm = maximum . f . I.keys $ I.filter letDef lm
   where letDef (Let v _) = v == var
         letDef _         = False
- 
 
 -- | Transform a statement to a lineMap, keys are line numbers, values at stmts
 toLineMap :: Stmt -> LineMap
@@ -198,15 +160,6 @@ stealEdges n1 n2 g = g'
   where
     e2s = getEdge n2 g
     g' = alterEdge (nub . (++e2s)) n1 g
-
-tester1 :: Stmt -> LGraph
-tester1 s = fst $ runEngine (toDCFG (tag s 0)) s
-
-tester2 :: Stmt -> LGraph
-tester2 s = fst $ runEngine (toCCFG (tag s 0)) s
-
-tester :: Stmt -> LGraph
-tester s = mconcat [tester1 s, tester2 s]
 
 -- | Special check for multiple let statements, given a let statement, check if
 -- the variable is already assigned, if so then remove old node, and copy over
@@ -232,8 +185,10 @@ getDataDeps' s           = S.toList $ allVars s
 
 -- | given a statement find all dependencies for the statement as a list of nodes
 getDeps :: (Int, Stmt) -> Engine LGraph LineMap [Int]
-getDeps (i, s) =
-  ask >>= \lm -> return . fmap (flip3 lastDefinedIn lm (filter (<i))) $ getDataDeps' s
+getDeps (i, s) = ask >>= \lm ->
+                           return .
+                           fmap (flip3 lastDefinedIn lm (filter (<i))) $
+                           getDataDeps' s
   where flip3 f x y z = f z y x
 
 -- | Given a statement, find all dependencies, and then add them to the graph
@@ -260,17 +215,13 @@ toDCFG (a@(i, _):ss) = do
   addDataDeps a
   toDCFG ss
 
--- | Helper function for get Dependencies function, recursively find all vars
--- mentioned in the statement, and return them as a list with no duplicates
-
-getContDeps' :: (Eq b) => [(a, b)] -> [(a, b)] -> [a]
-getContDeps' ss xs = fst <$> intersectBy (\x y -> snd x == snd y) ss xs
-  
+-- | Find all control dependencies
 getContDeps :: (Int, Stmt) -> [Node]
 getContDeps (i, If b t e)  = fst <$> tail (tag (If b t e) i)
 getContDeps (i, While b e) = fst <$> tail (tag (While b e) i)
 getContDeps _         = []
 
+-- | Given a node, and list of control dependencies, add those dependencies
 addContDeps :: Node -> [Node] -> Engine LGraph LineMap LGraph
 addContDeps _ [] = get
 addContDeps node (d:ds) = do
@@ -290,41 +241,64 @@ toCCFG (b@(i, _):ss) = do
   toCCFG ss
 toCCFG _ = get
       
-staticSlice :: Var -> LineMap -> LGraph -> LGraph
-staticSlice v lm = filterEdges (\n -> any (\x -> (unEdge x) `elem` defs) n)
+-- | Filter a graph based on a given variable, return the filtered graph
+staticSlice' :: Var -> LineMap -> LGraph -> LGraph
+staticSlice' v lm g = foldEdges (\es acc ->
+                                   foldr addNode' acc (unEdge <$> es)) g' g
   where defs = definedIn v id lm
+        g' = filterEdges (any ((`elem` defs) . unEdge)) g
+        getNode' e = getEdge e g
+        addNode' e = addNodeWEdge e (getNode' e)
 
-t x var = staticSlice var (toLineMap x) (tester x)
-a x var = toAST (t x var) (toLineMap x)
+unResolvedDeps :: LGraph -> Bool
+unResolvedDeps g = null $ nodes g L.\\
+                   nub (concatMap (\(x, y) -> x : (unEdge <$> y)) (edges g))
 
+staticSlice :: Var -> LineMap -> LGraph -> LGraph
+staticSlice v lm g
+  | unResolvedDeps g' = staticSlice' v lm g'
+  | otherwise         = g'
+  where g' = staticSlice' v lm g
+
+-- | Given a graph, return a set of all the nodes that have control edges
 contDefDeps :: LGraph -> S.Set Node
 contDefDeps = S.fromList . nodes . filterEdges helper
   where
     helper :: [DEdge] -> Bool
     helper = any edgeTest
+
     edgeTest (Edge Control _) = True
     edgeTest _                = False
 
--- Should be a set, but sets are required to be an instance of Ord, downside to
--- FP?
+-- Sets are ordinal in haskell, this is actually a limitation, the list
+-- implementation is way more complex and slow. Technically we do not want this
+-- sorted, but it ends up working because of the nature of line numbers
 toAST' :: LGraph -> S.Set Node
-toAST' = foldrGraph
-           (\n e acc -> n `S.insert` S.fromList (fmap unEdge e) `S.union` acc)
-           S.empty
+toAST' = S.fromList . nodes
 
--- toAST' :: LGraph -> [Node]
--- toAST' g = sort $ (\\ contDefDeps g) $ foldrGraph edgeHandler [] g
---   where edgeHandler n (Edge Data e:es) acc
---           | e `elem` acc = edgeHandler n es acc
---           | otherwise    = edgeHandler n es (e:acc)
---         edgeHandler n (Edge Control e:es) acc
---           | e `elem` acc = edgeHandler n es (acc \\ [n])
---           | otherwise    = edgeHandler n es ((e:acc) \\ [n])
---         edgeHandler n []     acc
---           | n `elem` acc = acc
---           | otherwise    = n : acc
-
+-- | Given a graph and a lineMap, transform the graph into a Abstract Syntax Tree
+-- wrapped in a Seq
 toAST :: LGraph -> LineMap -> Stmt
-toAST g lm = Seq . S.toList .
-             S.map (lm I.!) .
-             flip S.difference (contDefDeps g) $ toAST' g
+toAST g lm = Seq .
+             map (lm I.!) .
+             S.toList $ S.difference (toAST' g) (contDefDeps g)
+
+-- | Test the conversion from AST to Data-Edge LGraph
+tester1 :: Stmt -> LGraph
+tester1 s = fst $ runEngine (toDCFG (tag s 0)) s
+
+-- | Test the conversion from AST to Control-Edge LGraph
+tester2 :: Stmt -> LGraph
+tester2 s = fst $ runEngine (toCCFG (tag s 0)) s
+
+-- | Test the conversion from AST to Data and Control Edge graph
+tester :: Stmt -> LGraph
+tester s = mconcat [tester1 s, tester2 s]
+
+-- | Given an AST, and a variable, perform static slicing on that variable
+sliceAndGraph :: Var -> Stmt -> LGraph
+sliceAndGraph var x = staticSlice var (toLineMap x) (tester x)
+
+-- | Given an AST, and a variable, perform static slicing, and return a new AST
+genAST :: Var -> Stmt -> Stmt
+genAST var x = toAST (sliceAndGraph var x) (toLineMap x)

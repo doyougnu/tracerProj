@@ -115,6 +115,8 @@ ifTest3 = Seq [ Let "aa" (AR $ I 0)
                     ]
              ]
 
+whileTest2 :: Stmt
+whileTest2 = Seq [Let "x" (AR (I 0)),Let "z" (AR (I 10)),Let "x" (AR (V "z")),Let "z" (AR (V "x")),While (RBinary NEqual (V "x") (I 5)) (Seq [Let "x" (AR (ABinary Add (V "x") (I 1))),Let "z" (ST "String")])]
 
 seqTest :: Stmt
 seqTest = Seq [Let "x" (AR (I 2)),Let "y" (AR (I 3)),Let "x" (AR (V "y")),NoOp]
@@ -138,7 +140,7 @@ class Num n => PNum n where
 instance PNum Integer where
   (./) = div
 
--- -- | Pretty Printing
+-- | Pretty Printing
 -- instance Show BinBoolOp where
 --   show And = "&&"
 --   show Or  = "||"
