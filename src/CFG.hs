@@ -244,9 +244,9 @@ toCCFG _ = get
 -- | Filter a graph based on a given variable, return the filtered graph
 staticSlice' :: Var -> LineMap -> LGraph -> LGraph
 staticSlice' v lm g = foldEdges (\es acc ->
-                                   foldr addNode' acc (unEdge <$> es)) g' g
+                                   foldr addNode' acc (unEdge <$> es)) g' g'
   where defs = definedIn v id lm
-        g' = filterEdges (any ((`elem` defs) . unEdge)) g
+        g' = filterGraph (\n _ -> n `elem` defs) g
         getNode' e = getEdge e g
         addNode' e = addNodeWEdge e (getNode' e)
 
@@ -257,7 +257,7 @@ unResolvedDeps g = null $ nodes g L.\\
 staticSlice :: Var -> LineMap -> LGraph -> LGraph
 staticSlice v lm g
   | unResolvedDeps g' = staticSlice' v lm g'
-  | otherwise         = g'
+  | otherwise         = g
   where g' = staticSlice' v lm g
 
 -- | Given a graph, return a set of all the nodes that have control edges
@@ -279,9 +279,12 @@ toAST' = S.fromList . nodes
 -- | Given a graph and a lineMap, transform the graph into a Abstract Syntax Tree
 -- wrapped in a Seq
 toAST :: LGraph -> LineMap -> Stmt
-toAST g lm = Seq .
-             map (lm I.!) .
-             S.toList $ S.difference (toAST' g) (contDefDeps g)
+toAST g lm = Seq . map (lm I.!) . S.toList $ wrapper controlDeps ast
+  where controlDeps = contDefDeps g
+        ast         = trace (show $ toAST' g) toAST' g
+        wrapper cDeps a
+          | S.null cDeps  = a
+          | otherwise     = S.difference a controlDeps
 
 -- | Test the conversion from AST to Data-Edge LGraph
 tester1 :: Stmt -> LGraph

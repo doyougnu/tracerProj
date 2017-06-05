@@ -39,7 +39,7 @@ oldSliceAndTrace file var = inputProg file (printTrace .
                                          holify var)
 
 oldSlice :: String -> Var -> IO ()
-oldSlice file var = inputProg file (print . flip evalProg emptyState . holify var)
+oldSlice file var = inputProg file (print . holify var)
 
 programs :: IO ()
 programs = getDirectoryContents "Programs/" >>= mapM_ putStrLn . drop 2 . sort
@@ -47,8 +47,8 @@ programs = getDirectoryContents "Programs/" >>= mapM_ putStrLn . drop 2 . sort
 printProgram :: String -> IO ()
 printProgram file = inputProg file print
   
-staticSlice :: Var -> String -> IO ()
-staticSlice var file = inputProg file (print . C.genAST var)
+staticSlice :: String -> Var ->  IO ()
+staticSlice file var = inputProg file (print . C.genAST var)
 
 -- | list all the programs available to run
 -- | Run the program and print the final value and final state
