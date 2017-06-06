@@ -1,3 +1,7 @@
+!* demonstration of a whilestatement, slice on z to see the first let removed,
+   slice on x to see the last let before the while removed, running the slice x
+   will never terminate 
+*!
 let x = 0;
 let z = 10;
 let x = z;

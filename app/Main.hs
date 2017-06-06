@@ -44,11 +44,18 @@ oldSlice file var = inputProg file (print . holify var)
 printProgram :: String -> IO ()
 printProgram file = inputProg file print
   
-staticSlice :: String -> Var ->  IO ()
-staticSlice file var = inputProg file (print . C.genAST var)
+slice :: String -> Var ->  IO ()
+slice file var = inputProg file (print . C.genAST var)
 
 sliceAndEval :: String -> Var -> IO ()
-sliceAndEval file var = inputProg file (print . flip evalProg emptyState . C.genAST var)
+sliceAndEval file var = inputProg file (print .
+                                        flip evalProg emptyState .
+                                        C.genAST var)
+
+sliceTraceEval :: String -> Var -> IO ()
+sliceTraceEval file var = inputProg file (printTrace .
+                                         flip traceAll emptyState .
+                                         C.genAST var)
 
 -- | list all the programs available to run
 programs :: IO ()

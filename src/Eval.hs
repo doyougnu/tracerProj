@@ -69,8 +69,6 @@ evalAExpr (V var)          = do
   case M.lookup var st of
     Just res -> return res
     Nothing  -> tell ("Failed to Lookup var: " ++ var) >> mzero
-  -- fromMaybe (return NoOp) $ res
-  -- maybe (tell ("Failed to Lookup var:" ++ var) >> mzero) (return . fromJust) (M.lookup var st)
 evalAExpr (I i)            = aPack i
 evalAExpr (Neg i)          = do
   (AR (I i')) <- evalAExpr i
@@ -110,7 +108,7 @@ eval e@(While cond body) = do
     eval e
     else return NoOp
 
-eval (Seq xs) = mapM_ eval xs >> return NoOp
+eval (Seq xs) = mapM eval xs >>= return . last
 eval e = return e
 
 -- | Running the monad stack
