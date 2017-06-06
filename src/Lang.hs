@@ -10,16 +10,14 @@ type Var = String
 -- *  Booleans
 -- | Binary Boolean Ops
 data BinBoolOp = And | Or
-               -- deriving (Eq, Ord)
-               deriving (Eq, Show, Ord)
+               deriving (Eq, Ord)
 
 -- | Relational Boolean Ops
 data RelBoolOp = Less
                | Greater
                | Equal
                | NEqual
-               -- deriving (Eq, Ord)
-               deriving (Eq, Show, Ord)
+               deriving (Eq, Ord)
 
 -- | Boolean Expressions
 data BoolExpr = B Bool
@@ -27,8 +25,7 @@ data BoolExpr = B Bool
               | BBinary BinBoolOp BoolExpr BoolExpr
               | RBinary RelBoolOp ArExpr ArExpr
               | BNoOp
-              -- deriving (Eq, Ord)
-              deriving (Eq, Show, Ord)
+              deriving (Eq, Ord)
 
 -- * Arithmetic Operators
 -- | Binary Arithmatic operators
@@ -36,8 +33,7 @@ data ArBinOp = Add
              | Subtract
              | Multiply
              | Divide
-             -- deriving (Eq, Ord)
-             deriving (Eq, Show, Ord)
+             deriving (Eq, Ord)
 
 -- | Arithmetic Expressions
 data ArExpr  = V Var
@@ -45,8 +41,7 @@ data ArExpr  = V Var
             | Neg ArExpr
             | ABinary ArBinOp ArExpr ArExpr
             | ArNoOp
-            -- deriving (Eq, Ord)
-            deriving (Eq, Show, Ord)
+            deriving (Eq, Ord)
 
 -- * Statements
 data Stmt = BL BoolExpr
@@ -57,8 +52,7 @@ data Stmt = BL BoolExpr
           | While BoolExpr Stmt
           | Seq [Stmt]
           | NoOp
-          -- deriving (Eq, Ord)
-          deriving (Eq, Show, Ord)
+          deriving (Eq, Ord)
 
 -- | Types
 type VarState  = Map Var Stmt
@@ -140,50 +134,50 @@ class Num n => PNum n where
 instance PNum Integer where
   (./) = div
 
--- -- | Pretty Printing
--- instance Show BinBoolOp where
---   show And = "&&"
---   show Or  = "||"
+-- | Pretty Printing
+instance Show BinBoolOp where
+  show And = "&&"
+  show Or  = "||"
 
--- instance Show RelBoolOp where
---   show Less    = "<"
---   show Greater = ">"
---   show Equal   = "=="
---   show NEqual  = "!="
+instance Show RelBoolOp where
+  show Less    = "<"
+  show Greater = ">"
+  show Equal   = "=="
+  show NEqual  = "!="
 
--- instance Show BoolExpr where
---   show (B b)             = show b
---   show (Not b)           = "!" ++ "(" ++ show b ++ ")"
---   show (BBinary op b b') = show b ++ " " ++ show op ++ " " ++ show b'
---   show (RBinary op a a') = show a ++ " " ++ show op ++ " " ++ show a'
---   show BNoOp             = ""
+instance Show BoolExpr where
+  show (B b)             = show b
+  show (Not b)           = "!" ++ "(" ++ show b ++ ")"
+  show (BBinary op b b') = show b ++ " " ++ show op ++ " " ++ show b'
+  show (RBinary op a a') = show a ++ " " ++ show op ++ " " ++ show a'
+  show BNoOp             = ""
 
--- instance Show ArBinOp where
---   show Add      = "+"
---   show Subtract = "-"
---   show Multiply = "*"
---   show Divide   = "/"
+instance Show ArBinOp where
+  show Add      = "+"
+  show Subtract = "-"
+  show Multiply = "*"
+  show Divide   = "/"
 
--- instance Show ArExpr where
---   show (V var)           = var
---   show (I i)             = show i
---   show (Neg a)           = "~" ++ show a
---   show (ABinary op a a') = show a ++ " " ++ show op ++ " " ++ show a'
---   show ArNoOp             = ""
+instance Show ArExpr where
+  show (V var)           = var
+  show (I i)             = show i
+  show (Neg a)           = "~" ++ show a
+  show (ABinary op a a') = show a ++ " " ++ show op ++ " " ++ show a'
+  show ArNoOp             = ""
 
--- instance Show Stmt where
---   show (BL b)            = show b
---   show (AR a)            = show a
---   show (ST s)            = s
---   show (Let str stmt)    = "let " ++ show str ++ " = " ++ show stmt 
---   show (If cond t e)     = "If (" ++ show cond ++ ") {\n"  ++ buffer t ++ "} "
---                            ++ "else {\n" ++ buffer e ++ "}\n"
---   show (While cond stmt) = "while (" ++ show cond ++ ") {\n" ++
---                            buffer stmt ++ "}"
---   show (Seq xs)          = concatMap (flip (++) "\n". show) xs
---   show NoOp              = ""
+instance Show Stmt where
+  show (BL b)            = show b
+  show (AR a)            = show a
+  show (ST s)            = s
+  show (Let str stmt)    = "let " ++ show str ++ " = " ++ show stmt 
+  show (If cond t e)     = "If (" ++ show cond ++ ") {\n"  ++ buffer t ++ "} "
+                           ++ "else {\n" ++ buffer e ++ "}\n"
+  show (While cond stmt) = "while (" ++ show cond ++ ") {\n" ++
+                           buffer stmt ++ "}"
+  show (Seq xs)          = concatMap (flip (++) "\n". show) xs
+  show NoOp              = ""
 
--- buffer :: Stmt -> String
--- buffer stmt = case stmt of
---                  Seq xs -> concatMap (\s -> "    " ++ show s ++ "\n") xs
---                  x      -> "    " ++ show x
+buffer :: Stmt -> String
+buffer stmt = case stmt of
+                 Seq xs -> concatMap (\s -> "    " ++ show s ++ "\n") xs
+                 x      -> "    " ++ show x

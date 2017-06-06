@@ -2,7 +2,8 @@
 !* I'm a
    multi line comment
 *!
-let x = 2;
-let y = x;
+
+let x = 2; !! slice on x to get let defs
+let y = x; !! slice on y to show dependencies
 let x = 11;
-let z = x + y;
+let z = x + y; !! slice on z to demonstrate the tightness of the program
