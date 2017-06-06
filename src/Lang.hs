@@ -128,7 +128,7 @@ letTest :: Stmt
 letTest = Seq [ Let "x" (AR $ I 2)
               , Let "y" (AR $ V "x")
               , Let "x" (AR $ I 11)
-              -- , Let "z" (AR (ABinary Add (V "x") (V "y")))
+              , Let "z" (AR (ABinary Add (V "x") (V "y")))
               ]
 --
 
@@ -176,12 +176,14 @@ instance Show Stmt where
   show (AR a)            = show a
   show (ST s)            = s
   show (Let str stmt)    = "let " ++ show str ++ " = " ++ show stmt ++ "\n"
-  show (If cond t e)     = "If (" ++ show cond ++ ") {"  ++ show t ++ "} " ++
-                           "else {" ++ show e ++ "}\n"
+  show (If cond t e)     = "If (" ++ show cond ++ ") {\n"  ++ buffer t ++ "} "
+                           ++ "else {\n" ++ buffer e ++ "}\n"
   show (While cond stmt) = "while (" ++ show cond ++ ") {\n" ++
-                           ss ++ "}"
-    where ss = case stmt of
-                 Seq xs -> concatMap (("    " ++) . show) xs
-                 x      -> show x
+                           buffer stmt ++ "}"
   show (Seq xs)          = concatMap show xs
   show NoOp              = ""
+
+buffer :: Stmt -> String
+buffer stmt = case stmt of
+                 Seq xs -> concatMap (\s -> "    " ++ show s ++ "\n") xs
+                 x      -> "    " ++ show x

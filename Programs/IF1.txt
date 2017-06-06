@@ -1,0 +1,8 @@
+!! Simple program showing that slicing works with control statements
+let aa = 0;
+let bb = 100;
+if (aa < bb) {
+    bb - 10;
+    let aa = ~aa;
+} else {
+}

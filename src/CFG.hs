@@ -1,4 +1,4 @@
-module CFG (genAST) where
+module CFG where
 
 import Control.Monad.Reader
 import Control.Monad.State
@@ -8,7 +8,6 @@ import qualified Data.IntMap as I
 import qualified Data.Set as S
 import qualified Data.List as L
 import Data.List (nub)
-import Debug.Trace (trace)
 
 import Lang
 
@@ -242,23 +241,23 @@ toCCFG (b@(i, _):ss) = do
 toCCFG _ = get
       
 -- | Filter a graph based on a given variable, return the filtered graph
-staticSlice' :: Var -> LineMap -> LGraph -> LGraph
-staticSlice' v lm g = foldEdges (\es acc ->
-                                   foldr addNode' acc (unEdge <$> es)) g' g'
-  where defs = definedIn v id lm
-        g' = filterGraph (\n _ -> n `elem` defs) g
-        getNode' e = getEdge e g
-        addNode' e = addNodeWEdge e (getNode' e)
+innerLoop :: LGraph -> LGraph -> LGraph
+innerLoop g og = staticSlice newGraph og
+  where 
+    newGraph = foldEdges (\es acc -> foldr addNode' acc (unEdge <$> es)) g g
+    getNodeEdge e = getEdge e og
+    addNode' e = addNodeWEdge e (getNodeEdge e)
 
-unResolvedDeps :: LGraph -> Bool
-unResolvedDeps g = null $ nodes g L.\\
-                   nub (concatMap (\(x, y) -> x : (unEdge <$> y)) (edges g))
+resolvedDeps :: LGraph -> Bool
+resolvedDeps g = null $ edgeDeps L.\\ nodesInG
+  where
+    edgeDeps = nub (concatMap (\(x, y) -> x : (unEdge <$> y)) (edges g))
+    nodesInG = nodes g
 
-staticSlice :: Var -> LineMap -> LGraph -> LGraph
-staticSlice v lm g
-  | unResolvedDeps g' = staticSlice' v lm g'
-  | otherwise         = g
-  where g' = staticSlice' v lm g
+staticSlice :: LGraph -> LGraph -> LGraph
+staticSlice g og  
+  | resolvedDeps g = g
+  | otherwise = innerLoop g og
 
 -- | Given a graph, return a set of all the nodes that have control edges
 contDefDeps :: LGraph -> S.Set Node
@@ -281,7 +280,7 @@ toAST' = S.fromList . nodes
 toAST :: LGraph -> LineMap -> Stmt
 toAST g lm = Seq . map (lm I.!) . S.toList $ wrapper controlDeps ast
   where controlDeps = contDefDeps g
-        ast         = trace (show $ toAST' g) toAST' g
+        ast         = toAST' g
         wrapper cDeps a
           | S.null cDeps  = a
           | otherwise     = S.difference a controlDeps
@@ -300,7 +299,11 @@ tester s = mconcat [tester1 s, tester2 s]
 
 -- | Given an AST, and a variable, perform static slicing on that variable
 sliceAndGraph :: Var -> Stmt -> LGraph
-sliceAndGraph var x = staticSlice var (toLineMap x) (tester x)
+sliceAndGraph var x = staticSlice g og
+  where defs = definedIn var id lm
+        lm = toLineMap x
+        og = tester x
+        g = filterGraph (\n _ -> n `elem` defs) og
 
 -- | Given an AST, and a variable, perform static slicing, and return a new AST
 genAST :: Var -> Stmt -> Stmt

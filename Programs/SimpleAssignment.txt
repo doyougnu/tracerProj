@@ -3,6 +3,6 @@
    multi line comment
 *!
 let x = 2;
-let x = y;
-let y = 3;
-    
+let y = x;
+let x = 11;
+let z = x + y;
