@@ -8,6 +8,8 @@ import qualified Data.IntMap as I
 import qualified Data.Set as S
 import qualified Data.List as L
 import Data.List (nub)
+import Control.Arrow (second)
+import Debug.Trace (trace)
 
 import Lang
 
@@ -26,6 +28,9 @@ unEdge (Edge _ n) = n
 
 unTEdge :: Edge t n -> t
 unTEdge (Edge t _) = t
+
+isConEdge :: Edge Etype n -> Bool
+isConEdge = (==Control) . unTEdge
 
 dataWrap :: n -> Edge Etype n
 dataWrap = Edge Data
@@ -239,11 +244,11 @@ toCCFG (b@(i, _):ss) = do
   addContDeps i deps
   toCCFG ss
 toCCFG _ = get
-      
+
 -- | Filter a graph based on a given variable, return the filtered graph
 innerLoop :: LGraph -> LGraph -> LGraph
-innerLoop g og = staticSlice newGraph og
-  where 
+innerLoop g og = trace (show g ) $ staticSlice newGraph og
+  where
     newGraph = foldEdges (\es acc -> foldr addNode' acc (unEdge <$> es)) g g
     getNodeEdge e = getEdge e og
     addNode' e = addNodeWEdge e (getNodeEdge e)
@@ -255,7 +260,7 @@ resolvedDeps g = null $ edgeDeps L.\\ nodesInG
     nodesInG = nodes g
 
 staticSlice :: LGraph -> LGraph -> LGraph
-staticSlice g og  
+staticSlice g og
   | resolvedDeps g = g
   | otherwise = innerLoop g og
 
@@ -278,12 +283,31 @@ toAST' = S.fromList . nodes
 -- | Given a graph and a lineMap, transform the graph into a Abstract Syntax Tree
 -- wrapped in a Seq
 toAST :: LGraph -> LineMap -> Stmt
-toAST g lm = Seq . map (lm I.!) . S.toList $ wrapper controlDeps ast
-  where controlDeps = contDefDeps g
+-- toAST g lm = Seq . map (lm I.!) . S.toList $ wrapper controlDeps ast
+toAST g lm = Seq . map (\x -> cleanContDeps $ lm I.! x) .
+             S.toList $ trace (show controlDeps) $ ast
+  where controlDeps = fmap (second $ fmap unEdge . filter isConEdge) .
+                      edges .
+                      filterEdges (any isConEdge) $ g
+        mungedCDeps = listHelper controlDeps
         ast         = toAST' g
-        wrapper cDeps a
-          | S.null cDeps  = a
-          | otherwise     = S.difference a controlDeps
+
+        cleanContDeps (If b _ _)  = If b NoOp NoOp
+        cleanContDeps (While b _) = While b NoOp
+        cleanContDeps a           = a
+
+        -- contStmtHelp ((n,(e:es)):cs) =
+        --   where eStmt = lm I.! e
+        --         nStmt = lm I.! n
+        --         cleaner (If c _ _) = If c (Seq [nStmt]) NoOp
+        -- inThen i    =
+
+listHelper' (_, [])     = []
+listHelper' (x, y:ys)   = (y, x) : listHelper' (x, ys)
+
+listHelper xs = map (foldr (\x (a, ys) -> (fst x, snd x : ys)) (0,[])) grpd
+  where grpd = L.groupBy (\x y -> fst x == fst y) melted
+        melted = concatMap listHelper' xs
 
 -- | Test the conversion from AST to Data-Edge LGraph
 tester1 :: Stmt -> LGraph

@@ -169,7 +169,7 @@ instance Show Stmt where
   show (BL b)            = show b
   show (AR a)            = show a
   show (ST s)            = s
-  show (Let str stmt)    = "let " ++ show str ++ " = " ++ show stmt 
+  show (Let str stmt)    = "let " ++ str ++ " = " ++ show stmt
   show (If cond t e)     = "If (" ++ show cond ++ ") {\n"  ++ buffer t ++ "} "
                            ++ "else {\n" ++ buffer e ++ "}\n"
   show (While cond stmt) = "while (" ++ show cond ++ ") {\n" ++

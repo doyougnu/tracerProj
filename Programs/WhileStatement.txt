@@ -4,7 +4,7 @@
 *!
 let x = 0;
 let z = 10;
-let x = z;
+!!let x = z;
 let z = x;
 while (x != 5){
   let x = x + 1;
