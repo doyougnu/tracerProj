@@ -1,7 +1,7 @@
 # tracerProj
 
 ## What
-This project's purpose is to implement the WHILE language, with the ability to trace evaluation, and perform program slicing on any program in the language. Any slice, on a well-formed program should return a well-formed program.
+This project's purpose is to implement the WHILE language, with the ability to trace evaluation, and perform program slicing on any program in the language. Any slice, on a well-formed program should return a well-formed program. Slicing is, and was a stretch goal from the original project which was just to implement the WHILE language and perform tracing.
 
 ## Where
 All code, besides Main.hs, is located in src/, Main.hs is located in app/
@@ -18,8 +18,11 @@ There are several functions available at the top level, these are:
 4. slice
 5. sliceAndEval
 6. sliceTraceEval
+7. printRunProg
+8. printEvalProg
+9. printExecProg
 
-The help function will print out a list of available functions in the ghci session. The programs function will print out all programs in the Programs/ directory. The printProgram function will, when given the filename for a program, print out that program. Slice takes a filename and a variable and performs a slicing on that program for that variable, then prints out the result. SliceAndEval does the same thing as slice, but evalualates the resultant program. SliceTraceEval slices a program, then traces the evaluation of the resultant program. All of the slicing programs have P-variants that allow you to run a program _without_ the assumption that the program is in the Programs/ directory. If you choose to use any of these (sliceP, sliceAndEvalP etc.) then you must specify the path to the program in its entirety. 
+The help function will print out a list of available functions in the ghci session. The programs function will print out all programs in the Programs/ directory. The printProgram function will, when given the filename for a program, print out that program. Slice takes a filename and a variable and performs a slicing on that program for that variable, then prints out the result. SliceAndEval does the same thing as slice, but evalualates the resultant program. SliceTraceEval slices a program, then traces the evaluation of the resultant program. All of the slicing programs have P-variants that allow you to run a program _without_ the assumption that the program is in the Programs/ directory. If you choose to use any of these (sliceP, sliceAndEvalP etc.) then you must specify the path to the program in its entirety. Lastly, I've included functions that run the program and either print the final value, state or both. These follow the same pattern as most monad libraries where printRunProg outputs both and printEvalProg outputs the value.
 
 ### Examples
 Here are just some examples to refer to:

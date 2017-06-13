@@ -9,7 +9,7 @@ import qualified Data.Set as S
 import qualified Data.List as L
 import Data.List (nub)
 import Control.Arrow (second)
-
+import Debug.Trace (trace)
 import Lang
 
 -- | Two Types of Edges, data dependence, control flow dependence
@@ -280,12 +280,10 @@ toAST' = S.fromList . nodes
 -- | Given a graph and a lineMap, transform the graph into a Abstract Syntax Tree
 -- wrapped in a Seq
 toAST :: LGraph -> LineMap -> Stmt
--- toAST g lm = Seq . map (lm I.!) . S.toList $ wrapper controlDeps ast
 toAST g lm = Seq $ reconstruct mungedCDeps ast
   where controlDeps = fmap (second $ fmap unEdge . filter isConEdge) .
-                      edges .
-                      filterEdges (any isConEdge) $ g
-        mungedCDeps =  listHelper controlDeps
+                      edges . filterEdges (any isConEdge) $ g
+        mungedCDeps =  listHelper (trace (show controlDeps) controlDeps)
         ast         =  map (lm I.!) .
                        S.toList $ S.difference (toAST' g) $ contDefDeps g
 
@@ -299,7 +297,7 @@ toAST g lm = Seq $ reconstruct mungedCDeps ast
                                                       drop n acc)
           where nStmt = lm I.! n
                 cleanSt = cleanContDeps nStmt
-                newStmt = foldr (\x a -> addStmt a (lm I.! x)) cleanSt es
+                newStmt = foldr (\x ac -> addStmt ac (lm I.! x)) cleanSt es
 
                 inElse (If _ _ (Seq xs)) s2 = s2 `L.elem` xs
                 inElse (If _ _ xs) s2 = xs == s2
@@ -327,7 +325,7 @@ listHelper' (x, y:ys)   = (y, x) : listHelper' (x, ys)
 
 listHelper xs = map (foldr (\x (_, ys) -> (fst x, snd x : ys)) (0,[])) grpd
   where grpd = L.groupBy (\x y -> fst x == fst y) melted
-        melted = concatMap listHelper' xs
+        melted = L.sort . nub $ concatMap listHelper' xs
 
 -- | Test the conversion from AST to Data-Edge LGraph
 tester1 :: Stmt -> LGraph

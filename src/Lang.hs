@@ -100,8 +100,9 @@ ifTest2 = Seq [ Let "aa" (AR $ I 0)
                     ])
                (Seq [ Let "aa" (AR . I $ 1000)])
              ]
-whileTest2 :: Stmt
-whileTest2 = Seq [Let "x" (AR (I 0)),Let "z" (AR (I 10)),Let "x" (AR (V "z")),Let "z" (AR (V "x")),While (RBinary NEqual (V "x") (I 5)) (Seq [Let "x" (AR (ABinary Add (V "x") (I 1))),Let "z" (ST "String")])]
+
+conTest :: Stmt
+conTest = Seq [Let "aa" (AR (I 0)),Let "bb" (ST ""),While (RBinary Less (V "aa") (I 101)) (Seq [If (RBinary Equal (ABinary Divide (V "aa") (I 5)) (I 0)) (Let "bb" (ST "Fizz")) (Let "bb" (ST "Buzz")),Let "aa" (AR (ABinary Add (V "aa") (I 1)))]),AR (V "bb")]
 
 seqTest :: Stmt
 seqTest = Seq [Let "x" (AR (I 2)),Let "y" (AR (I 3)),Let "x" (AR (V "y")),NoOp]

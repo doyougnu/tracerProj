@@ -67,12 +67,12 @@ sliceTraceEval file var = inputProg file (printTrace .
 -- | Helper function to remind user of options
 help :: IO ()
 help = mapM_ putStrLn [ "Available Functions: "
-                      , "  1. Programs        -- List all available pre-made programs in the Program/ directory"
+                      , "  1. Programs        -- List all available pre-made programs in the Programs/ directory"
                       , "  2. printProgram    -- Print a given program"
                       , "  3. slice           -- Slice a program on a given variable"
                       , "  4. sliceAndEval    -- Slice a program, then evaluate the resultant program"
                       , "  5. sliceTraceEval  -- Slice a program, and evaluate the result while tracing it"
-                      , "  6. sliceP          -- Same as 3, but assumes the program is not in the Program/ directory"
+                      , "  6. sliceP          -- Same as 3, but assumes the program is not in the Programs/ directory"
                       , "  7. sliceAndEvalP   -- Same as 4, but makes the same assumption as 6"
                       , "  8. sliceTraceEvalP -- Same as 5, makes same assumptions as 6, 7"
                       , "  9. printRunProg    -- Run the program, print the final value and final state"

@@ -1,0 +1,18 @@
+!* This program is a stress test, to see a normal slice, slice on "aa". To see
+   my program break down slice on "bb". Basically nested control flow statements
+   are not reconstructed correctly and so the entire if-statement will be lost.
+   I'm convinced there must be a cleaner way to reconstruct ASTs then the graph
+   crawling done in this project
+*!
+let aa = 0;
+let bb = __;
+while (aa < 101){
+      if (aa / 5 == 0){
+        let bb = _Fizz_;
+      } else {
+        let bb = _Buzz_;
+      };
+
+      let aa = aa + 1;
+};
+bb;
