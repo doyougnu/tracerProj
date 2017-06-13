@@ -8,7 +8,7 @@ import Text.Megaparsec (parse, parseErrorPretty)
 import Parser
 import Lang
 import Eval
-import Trace
+
 import qualified CFG as C
 
 main :: IO ()
@@ -32,34 +32,58 @@ inputProg file = input  ("Programs/" ++ file ++ ".txt")
 traceTotalProg :: String -> IO ()
 traceTotalProg file = inputProg file (printTrace . flip traceAll emptyState)
 
--- | Forward slice the program based on a Variable and trace all computations
-oldSliceAndTrace :: String -> Var -> IO ()
-oldSliceAndTrace file var = inputProg file (printTrace .
-                                         flip traceAll emptyState .
-                                         holify var)
+-- | Slice a program by a given variable, P denotes program is not in Programs/
+sliceP :: String -> Var ->  IO ()
+sliceP file var = input file (print . C.genAST var)
 
-oldSlice :: String -> Var -> IO ()
-oldSlice file var = inputProg file (print . holify var)
+-- | Slice a program then Evaluate it, P denotes program is not in Programs/
+sliceAndEvalP :: String -> Var -> IO ()
+sliceAndEvalP file var = input file (print .
+                                      flip evalProg emptyState .
+                                      C.genAST var)
 
-printProgram :: String -> IO ()
-printProgram file = inputProg file print
-  
+-- | Slice a program then Evaluate it and trace the evaluation
+sliceTraceEvalP :: String -> Var -> IO ()
+sliceTraceEvalP file var = input file (printTrace .
+                                        flip traceAll emptyState .
+                                        C.genAST var)
+
+-- | Slice a program by a given var, with the assumption that prog is in Programs/
 slice :: String -> Var ->  IO ()
 slice file var = inputProg file (print . C.genAST var)
 
+-- | Slice a program and evaluate the resultant program
 sliceAndEval :: String -> Var -> IO ()
 sliceAndEval file var = inputProg file (print .
                                         flip evalProg emptyState .
                                         C.genAST var)
 
+-- | Slice a program, evaluate the resultant program, and then trace the eval.
 sliceTraceEval :: String -> Var -> IO ()
 sliceTraceEval file var = inputProg file (printTrace .
                                          flip traceAll emptyState .
                                          C.genAST var)
 
+-- | Helper function to remind user of options
+help :: IO ()
+help = mapM_ putStrLn [ "Available Functions: "
+                      , "  1. Programs        -- List all available pre-made programs in the Program/ directory"
+                      , "  2. printProgram    -- Print a given program"
+                      , "  3. slice           -- Slice a program on a given variable"
+                      , "  4. sliceAndEval    -- Slice a program, then evaluate the resultant program"
+                      , "  5. sliceTraceEval  -- Slice a program, and evaluate the result while tracing it"
+                      , "  6. sliceP          -- Same as 3, but assumes the program is not in the Program/ directory"
+                      , "  7. sliceAndEvalP   -- Same as 4, but makes the same assumption as 6"
+                      , "  8. sliceTraceEvalP -- Same as 5, makes same assumptions as 6, 7"
+                      ]
+
 -- | list all the programs available to run
 programs :: IO ()
 programs = getDirectoryContents "Programs/" >>= mapM_ putStrLn . drop 2 . sort
+
+-- | Given a filename, print the program in that file
+printProgram :: String -> IO ()
+printProgram file = inputProg file print
 
 -- | Run the program and print the final value and final state
 printRunProg :: String -> IO ()
@@ -73,6 +97,14 @@ printEvalProg file = inputProg file (print . flip evalProg emptyState)
 printExecProg :: String -> IO ()
 printExecProg file = inputProg file (print . flip execProg emptyState)
 
--- Implement line numbers so we do not have to print out the entire program
--- Allow a list of variable inputs
--- How did FP support the program or how did it hinder it?
+-- | Run the program and print the final value and final state
+printRunProgP :: String -> IO ()
+printRunProgP file = input file (print . flip runProg emptyState)
+
+-- | Run the program and print the final value
+printEvalProgP :: String -> IO ()
+printEvalProgP file = input file (print . flip evalProg emptyState)
+
+-- | Run the program and print the final state
+printExecProgP :: String -> IO ()
+printExecProgP file = input file (print . flip execProg emptyState)

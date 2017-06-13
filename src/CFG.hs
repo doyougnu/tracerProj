@@ -9,7 +9,6 @@ import qualified Data.Set as S
 import qualified Data.List as L
 import Data.List (nub)
 import Control.Arrow (second)
-import Debug.Trace (trace)
 
 import Lang
 
