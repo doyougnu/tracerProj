@@ -247,7 +247,7 @@ toCCFG _ = get
 
 -- | Filter a graph based on a given variable, return the filtered graph
 innerLoop :: LGraph -> LGraph -> LGraph
-innerLoop g og = trace (show g ) $ staticSlice newGraph og
+innerLoop g og = staticSlice newGraph og
   where
     newGraph = foldEdges (\es acc -> foldr addNode' acc (unEdge <$> es)) g g
     getNodeEdge e = getEdge e og
@@ -266,10 +266,13 @@ staticSlice g og
 
 -- | Given a graph, return a set of all the nodes that have control edges
 contDefDeps :: LGraph -> S.Set Node
-contDefDeps = S.fromList . nodes . filterEdges helper
+contDefDeps = S.fromList . concatMap unTuple . concatMap listHelper' .
+              fmap (second (fmap unEdge)) . edges . filterEdges helper
   where
     helper :: [DEdge] -> Bool
     helper = any edgeTest
+
+    unTuple (x, y) = [x, y]
 
     edgeTest (Edge Control _) = True
     edgeTest _                = False
@@ -284,23 +287,40 @@ toAST' = S.fromList . nodes
 -- wrapped in a Seq
 toAST :: LGraph -> LineMap -> Stmt
 -- toAST g lm = Seq . map (lm I.!) . S.toList $ wrapper controlDeps ast
-toAST g lm = Seq . map (\x -> cleanContDeps $ lm I.! x) .
-             S.toList $ trace (show controlDeps) $ ast
+toAST g lm = Seq $ reconstruct mungedCDeps ast
   where controlDeps = fmap (second $ fmap unEdge . filter isConEdge) .
                       edges .
                       filterEdges (any isConEdge) $ g
-        mungedCDeps = listHelper controlDeps
-        ast         = toAST' g
+        mungedCDeps =  listHelper controlDeps
+        ast         =  map (lm I.!) .
+                       S.toList $ S.difference (toAST' g) $ contDefDeps g
 
         cleanContDeps (If b _ _)  = If b NoOp NoOp
         cleanContDeps (While b _) = While b NoOp
         cleanContDeps a           = a
 
-        -- contStmtHelp ((n,(e:es)):cs) =
-        --   where eStmt = lm I.! e
-        --         nStmt = lm I.! n
-        --         cleaner (If c _ _) = If c (Seq [nStmt]) NoOp
-        -- inThen i    =
+        reconstruct []          acc = acc
+        reconstruct ((n,es):cs) acc = reconstruct cs (take n acc ++
+                                                      [newStmt] ++
+                                                      drop n acc)
+          where nStmt = lm I.! n
+                cleanSt = cleanContDeps nStmt
+                newStmt = foldr (\x acc -> addStmt acc (lm I.! x)) cleanSt es
+
+                inElse (If _ _ (Seq xs)) s2 = s2 `L.elem` xs
+                inElse (If _ _ xs) s2 = xs == s2
+                inElse _           _  = False
+
+                addStmt (If b NoOp NoOp) s2
+                  | inElse nStmt s2 = If b NoOp s2
+                  | otherwise       = If b s2 NoOp
+                addStmt (If b (Seq xs) (Seq ys)) s2
+                  | inElse nStmt s2 = If b (Seq xs) (Seq (s2:ys))
+                  | otherwise       = If b (Seq (s2:xs)) (Seq ys)
+                addStmt (While b NoOp) s2 = While b s2
+                addStmt (While b (Seq xs)) s2 = While b (Seq (s2:xs))
+                addStmt  a                 _  = a
+
 
 listHelper' (_, [])     = []
 listHelper' (x, y:ys)   = (y, x) : listHelper' (x, ys)
