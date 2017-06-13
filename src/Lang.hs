@@ -94,21 +94,12 @@ ifTest = Seq [ Let "aa" (AR $ I 0)
 ifTest2 :: Stmt
 ifTest2 = Seq [ Let "aa" (AR $ I 0)
              , Let "bb" (AR $ I 100)
-             , If (BBinary And (B True) (B True))
+             , If (RBinary Less (V "aa") (V "bb"))
                (Seq [ AR (ABinary Subtract (V "bb") (I 10))
                     , Let "aa" (AR . Neg $ V "aa")
                     ])
-               NoOp
+               (Seq [ Let "aa" (AR . I $ 1000)])
              ]
-
-ifTest3 :: Stmt
-ifTest3 = Seq [ Let "aa" (AR $ I 0)
-             , Let "bb" (AR $ I 100)
-             , Seq [ AR (ABinary Subtract (V "bb") (I 10))
-                    , Let "aa" (AR . Neg $ V "aa")
-                    ]
-             ]
-
 whileTest2 :: Stmt
 whileTest2 = Seq [Let "x" (AR (I 0)),Let "z" (AR (I 10)),Let "x" (AR (V "z")),Let "z" (AR (V "x")),While (RBinary NEqual (V "x") (I 5)) (Seq [Let "x" (AR (ABinary Add (V "x") (I 1))),Let "z" (ST "String")])]
 

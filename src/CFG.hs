@@ -264,18 +264,13 @@ staticSlice g og
   | resolvedDeps g = g
   | otherwise = innerLoop g og
 
--- | Given a graph, return a set of all the nodes that have control edges
+-- | Given a graph, return a set of all the nodes create Control Edges
 contDefDeps :: LGraph -> S.Set Node
-contDefDeps = S.fromList . concatMap unTuple . concatMap listHelper' .
-              fmap (second (fmap unEdge)) . edges . filterEdges helper
-  where
-    helper :: [DEdge] -> Bool
-    helper = any edgeTest
-
-    unTuple (x, y) = [x, y]
-
-    edgeTest (Edge Control _) = True
-    edgeTest _                = False
+contDefDeps = S.fromList .
+              foldr (\(x, y) acc -> x : acc ++ (unEdge <$> y)) [] .
+              fmap (second (filter isConEdge)) .
+              edges .
+              filterEdges (any isConEdge)
 
 -- Sets are ordinal in haskell, this is actually a limitation, the list
 -- implementation is way more complex and slow. Technically we do not want this
@@ -305,18 +300,24 @@ toAST g lm = Seq $ reconstruct mungedCDeps ast
                                                       drop n acc)
           where nStmt = lm I.! n
                 cleanSt = cleanContDeps nStmt
-                newStmt = foldr (\x acc -> addStmt acc (lm I.! x)) cleanSt es
+                newStmt = foldr (\x a -> addStmt a (lm I.! x)) cleanSt es
 
                 inElse (If _ _ (Seq xs)) s2 = s2 `L.elem` xs
                 inElse (If _ _ xs) s2 = xs == s2
                 inElse _           _  = False
 
                 addStmt (If b NoOp NoOp) s2
-                  | inElse nStmt s2 = If b NoOp s2
-                  | otherwise       = If b s2 NoOp
+                  | inElse nStmt s2 = If b NoOp (Seq [s2])
+                  | otherwise       = If b (Seq [s2]) NoOp
                 addStmt (If b (Seq xs) (Seq ys)) s2
                   | inElse nStmt s2 = If b (Seq xs) (Seq (s2:ys))
                   | otherwise       = If b (Seq (s2:xs)) (Seq ys)
+                addStmt (If b NoOp (Seq ys)) s2
+                  | inElse nStmt s2 = If b NoOp (Seq (s2:ys))
+                  | otherwise       = If b (Seq [s2]) (Seq ys)
+                addStmt (If b (Seq xs) NoOp) s2
+                  | inElse nStmt s2 = If b (Seq xs) (Seq [s2])
+                  | otherwise       = If b (Seq (s2:xs)) NoOp 
                 addStmt (While b NoOp) s2 = While b s2
                 addStmt (While b (Seq xs)) s2 = While b (Seq (s2:xs))
                 addStmt  a                 _  = a
@@ -325,7 +326,7 @@ toAST g lm = Seq $ reconstruct mungedCDeps ast
 listHelper' (_, [])     = []
 listHelper' (x, y:ys)   = (y, x) : listHelper' (x, ys)
 
-listHelper xs = map (foldr (\x (a, ys) -> (fst x, snd x : ys)) (0,[])) grpd
+listHelper xs = map (foldr (\x (_, ys) -> (fst x, snd x : ys)) (0,[])) grpd
   where grpd = L.groupBy (\x y -> fst x == fst y) melted
         melted = concatMap listHelper' xs
 
