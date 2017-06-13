@@ -1,11 +1,14 @@
-!* Simple program showing that slicing works with control statements
-   notice that slicing on "aa" will give back the program because both aa and bb
-   are required for the if statement
+!* Simple program showing that slicing works with control statements notice that
+   slicing on "aa" will give back the program because both aa and bb are
+   required for the if statement. Also notice that the bb - 10 statement is
+   always sliced away because it affects nothing
 *!
+
 let aa = 0;
 let bb = 100;
 if (aa < bb) {
     bb - 10;
     let aa = ~aa;
 } else {
-}
+  let aa = 1000;
+};

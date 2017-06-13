@@ -75,6 +75,12 @@ help = mapM_ putStrLn [ "Available Functions: "
                       , "  6. sliceP          -- Same as 3, but assumes the program is not in the Program/ directory"
                       , "  7. sliceAndEvalP   -- Same as 4, but makes the same assumption as 6"
                       , "  8. sliceTraceEvalP -- Same as 5, makes same assumptions as 6, 7"
+                      , "  9. printRunProg    -- Run the program, print the final value and final state"
+                      , " 10. printEvalProg   -- Run the program, print the final value"
+                      , " 11. printExecProg   -- Run the program, print the final state"
+                      , " 12. printRunProgP   -- see P-variants above"
+                      , " 13. printEvalProgP  -- see P-variants above"
+                      , " 14. printExecProgP  -- see P-variants above"
                       ]
 
 -- | list all the programs available to run
